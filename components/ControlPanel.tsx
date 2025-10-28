@@ -1,5 +1,5 @@
 import React from 'react';
-import { GARMENT_CATEGORIES, STYLE_OPTIONS, ASPECT_RATIO_OPTIONS, DESIGN_STYLE_CATEGORIES, StyleOption, AspectRatioOption } from '../constants';
+import { GARMENT_CATEGORIES, STYLE_OPTIONS, ASPECT_RATIO_OPTIONS, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, StyleOption, AspectRatioOption } from '../constants';
 
 interface ControlPanelProps {
   selectedCategory: string;
@@ -9,6 +9,11 @@ interface ControlPanelProps {
   onGarmentChange: (value: string) => void;
   selectedDesignStyle: string;
   onDesignStyleChange: (value: string) => void;
+  selectedColor: string;
+  onColorChange: (value: string) => void;
+  materialOptions: string[];
+  selectedMaterial: string;
+  onMaterialChange: (value: string) => void;
   selectedStyle: StyleOption;
   onStyleChange: (value: StyleOption) => void;
   selectedAspectRatio: AspectRatioOption;
@@ -23,14 +28,16 @@ const SelectInput: React.FC<{
   onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   options: { value: string; label: string }[];
   id: string;
-}> = ({ label, value, onChange, options, id }) => (
+  disabled?: boolean;
+}> = ({ label, value, onChange, options, id, disabled = false }) => (
   <div className="mb-4">
     <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
     <select
       id={id}
       value={value}
       onChange={onChange}
-      className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white"
+      disabled={disabled}
+      className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {options.map(option => (
         <option key={option.value} value={option.value}>{option.label}</option>
@@ -76,6 +83,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onGarmentChange,
   selectedDesignStyle,
   onDesignStyleChange,
+  selectedColor,
+  onColorChange,
+  materialOptions,
+  selectedMaterial,
+  onMaterialChange,
   selectedStyle,
   onStyleChange,
   selectedAspectRatio,
@@ -121,9 +133,26 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             ))}
           </select>
         </div>
+
+        <SelectInput
+          id="garment-color"
+          label="D. Select Color"
+          value={selectedColor}
+          onChange={(e) => onColorChange(e.target.value)}
+          options={GARMENT_COLORS.map(color => ({ value: color, label: color }))}
+        />
+
+        <SelectInput
+          id="garment-material"
+          label="E. Select Material"
+          value={selectedMaterial}
+          onChange={(e) => onMaterialChange(e.target.value)}
+          options={materialOptions.map(material => ({ value: material, label: material }))}
+          disabled={materialOptions.length === 0}
+        />
         
         <RadioGroup
-          label="D. Select Mockup Style"
+          label="F. Select Mockup Style"
           selectedValue={selectedStyle}
           onChange={onStyleChange}
           options={STYLE_OPTIONS.map(style => ({ value: style, label: style }))}
@@ -131,7 +160,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         <SelectInput
           id="aspect-ratio"
-          label="E. Select Aspect Ratio"
+          label="G. Select Aspect Ratio"
           value={selectedAspectRatio}
           onChange={(e) => onAspectRatioChange(e.target.value as AspectRatioOption)}
           options={ASPECT_RATIO_OPTIONS.map(ratio => ({ value: ratio, label: ratio }))}

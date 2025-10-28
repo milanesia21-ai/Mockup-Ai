@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 interface DraggableGraphicProps {
   src: string;
@@ -9,6 +9,8 @@ interface DraggableGraphicProps {
   initialSize: number; // Factor of container width
   initialRotation: number; // degrees
   flip: { horizontal: boolean; vertical: boolean };
+  finishSimulation: string;
+  smartDisplacement: boolean;
 }
 
 export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({ 
@@ -19,7 +21,9 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
   initialPosition, 
   initialSize, 
   initialRotation, 
-  flip 
+  flip,
+  finishSimulation,
+  smartDisplacement
 }) => {
   const [isInteracting, setIsInteracting] = useState<false | 'dragging' | 'resizing'>(false);
   const graphicRef = useRef<HTMLDivElement>(null);
@@ -32,6 +36,32 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
     height: 0,
   });
   const [naturalAspectRatio, setNaturalAspectRatio] = useState(1);
+  
+  const graphicStyles = useMemo(() => {
+    const styles: React.CSSProperties = {
+      mixBlendMode: smartDisplacement ? 'multiply' : 'normal',
+      filter: 'none',
+    };
+
+    switch(finishSimulation) {
+      case 'High-Density Embroidery':
+        styles.filter = 'brightness(1.05) contrast(1.1) drop-shadow(0px 1px 1px rgba(0,0,0,0.4))';
+        break;
+      case 'Heavy Screen Print Ink':
+        styles.filter = 'brightness(1.1) contrast(1.05) drop-shadow(0px 1px 0.5px rgba(0,0,0,0.2))';
+        break;
+      case 'Distressed Vintage Print':
+        styles.opacity = 0.85;
+        styles.filter = 'contrast(1.2) saturate(0.9)';
+        break;
+      case 'Foil/Metallic Print':
+        styles.filter = 'brightness(1.3) contrast(1.2) saturate(1.1)';
+        break;
+      default: // Standard Screen Print
+        break;
+    }
+    return styles;
+  }, [finishSimulation, smartDisplacement]);
 
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -162,7 +192,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
       ref={graphicRef}
       onMouseDown={(e) => handleInteractionStart(e, 'dragging')}
       className="absolute cursor-move select-none border-2 border-dashed border-indigo-400 p-1 box-content"
-      style={{ touchAction: 'none' }}
+      style={{ touchAction: 'none', ...graphicStyles }}
     >
         <img
             src={src}

@@ -69,143 +69,131 @@ export interface DesignStyleCategory {
 
 export const DESIGN_STYLE_CATEGORIES: DesignStyleCategory[] = [
   {
-    name: 'Trend Revival',
-    items: [
-      '[Y2K/Early 2000s]',
-      '[90s Streetwear]',
-      '[80s Synthwave/Vaporwave]',
-    ],
-  },
-  {
     name: 'Modern Aesthetics',
     items: [
-      '[Athleisure/Cozywear]',
       '[Minimalist/Normcore]',
+      '[Athleisure/Cozywear]',
       '[Cyberpunk/Techwear]',
-      '[Grunge/Distressed]',
-      '[Cottagecore/Boho]',
       '[Gorpcore/Outdoor]',
+      '[Streetwear]',
+      '[Skater]',
     ],
   },
   {
-    name: 'Artistic/Luxury',
+    name: 'Vintage & Retro',
+    items: [
+      '[Y2K/Early 2000s]',
+      '[90s Grunge]',
+      '[80s Synthwave/Vaporwave]',
+      '[70s Psychedelic/Boho]',
+      '[50s Rockabilly]',
+      '[Workwear/Utilitarian]',
+    ],
+  },
+  {
+    name: 'Artistic & Luxury',
     items: [
       '[Haute Couture/Luxury]',
       '[Abstract Art/Expressionist]',
       '[Tattoo Style]',
+      '[Gothic/Darkwear]',
+      '[Avant-Garde]',
+    ],
+  },
+  {
+    name: 'Cultural & Geographic',
+    items: [
+      '[Japanese Streetwear (Harajuku)]',
+      '[Scandinavian Minimalist]',
+      '[Western/Americana]',
+      '[Tropical/Vacation]',
+      '[Nautical/Maritime]',
+    ],
+  },
+  {
+    name: 'Niche & Subculture',
+    items: [
+      '[Preppy/Ivy League]',
+      '[Punk Rock]',
+      '[Hip-Hop/Urban]',
+      '[Cottagecore/Pastoral]',
+      '[Biker/Moto]',
     ],
   },
 ];
 
-export const BASE_PROMPT = `
-=== LAYOUT & COMPOSITION ===
-- Dual view presentation: FRONT view positioned on the LEFT side, BACK view positioned on the RIGHT side
-- Both views perfectly centered, aligned at identical height with equal spacing between them
-- Pure black background (#000000) for maximum contrast and professional appearance
-- Garment color: White (#FFFFFF) or Light Grey (#F5F5F5) as default, easily customizable
-- Both views should be identical in size and scale
-- Symmetrical, professional presentation suitable for e-commerce or portfolio use
 
-=== GARMENT CONSTRUCTION - UNIVERSAL DETAILS ===
-SEAMS & STITCHING:
-- All major seams clearly visible with thin line indication
-- Shoulder seams, side seams, sleeve seams, inseams, outseams as applicable
-- Topstitching where appropriate (decorative or reinforcement stitching)
-- Contrast stitching for denim items (gold/tan thread #D4A574)
-- Bartack reinforcement at stress points (pocket corners, belt loops)
-NECKLINES & COLLARS (Garment-Specific):
-- Crew neck: Rounded neckline with ribbed band
-- V-neck: V-shaped opening with ribbed or bound edge
-- Henley: Partial button placket (2-5 buttons) extending from neckline
-- Polo collar: Folded collar with button placket (2-3 buttons)
-- Shirt collar: Traditional collar with points, collar band, and top button
-- Hoodie: Hood with drawstrings, interior lining visible at opening
-SLEEVES (Garment-Specific):
-- Short sleeves: Hem at mid-bicep with clean finish
-- Long sleeves: Full length to wrist with cuff detail
-- Sleeveless: Armhole with bound edge or tank-style wider opening
-- Raglan sleeves: Diagonal seam from underarm to neckline
-- Set-in sleeves: Traditional shoulder seam construction
-- Ribbed cuffs: Elastic ribbed band at wrist (hoodies, sweatshirts)
-- Button cuffs: Dress shirt style with 1-2 buttons and placket
-CLOSURES & FASTENERS:
-- Buttons: Circular shapes with subtle shading, visible stitch holes, positioned on button placket
-- Zippers: Metal or plastic teeth texture, zipper pull tab, zipper tape/guard
-- Drawstrings: Cord running through channel with aglets (metal or plastic tips)
-POCKETS (Garment-Specific):
-- Patch pockets: Sewn-on rectangular pockets with visible stitching outline
-- Kangaroo pocket: Single large front pocket on hoodies (horizontal opening)
-- Slash pockets: Angled side-entry pockets (pants, jackets)
-- Welt pockets: Rectangular opening with finished edge (suit jackets, dress pants)
-- Flap pockets: Pocket with covering flap and button closure
-- Cargo pockets: Large external pockets with flap and button/velcro (sides of pants/shorts)
-WAISTBANDS & HEMS:
-- Ribbed waistband: Elastic band with horizontal rib texture (sweatpants, athletic wear)
-- Structured waistband: Stiff band with belt loops, button, and zipper (pants, jeans)
-- Straight hem: Clean horizontal finish line
-- Curved hem: Rounded shirttail hem (button-up shirts)
-RIBBED TEXTURES (Where Applicable):
-- Neck ribbing: Horizontal parallel lines indicating knit texture (t-shirts, sweatshirts)
-- Cuff ribbing: Visible texture with 1x1 or 2x2 rib pattern
-- Waistband ribbing: Elastic knit with texture lines
-HARDWARE DETAILS:
-- Rivets (jeans): Small copper/brass circles at pocket corners (#B87333)
-- Grommets: Reinforced metal eyelet holes (hoodie drawstrings)
+export const GARMENT_COLORS = [
+  "White (#FFFFFF)",
+  "Black (#000000)",
+  "Heather Grey (#B2B2B2)",
+  "Charcoal (#36454F)",
+  "Navy Blue (#000080)",
+  "Royal Blue (#4169E1)",
+  "Red (#FF0000)",
+  "Maroon (#800000)",
+  "Forest Green (#228B22)",
+  "Olive Green (#808000)",
+  "Yellow (#FFFF00)",
+  "Orange (#FFA500)",
+  "Beige (#F5F5DC)",
+  "Khaki (#C3B091)",
+  "Brown (#A52A2A)",
+];
 
-=== FABRIC APPEARANCE - CRITICAL REQUIREMENTS ===
-SMOOTH, WRINKLE-FREE PRIMARY SURFACES:
-- Main body areas (chest, back, entire torso, thigh fronts) MUST be completely smooth, flat, and wrinkle-free
-- Fabric should appear freshly pressed, crisp, clean, and new
-- Absolutely NO excessive wrinkles, creases, or fabric bunching on primary design placement surfaces
-MINIMAL, NATURAL FOLDS - ALLOWED ONLY AT:
-- Armhole/shoulder junction, Inner elbow, Behind knee, Bottom hem, Waistband area
-- Folds MUST BE extremely subtle, naturalistic, and never interfere with main design areas
+export const MATERIALS_BY_GARMENT_TYPE: { [key: string]: string[] } = {
+  'TOPS - CASUAL': ['Cotton Jersey', 'Polyester Blend', 'Tri-Blend (Cotton/Poly/Rayon)', 'Linen', 'Pima Cotton', 'Modal'],
+  'TOPS - COLLARED': ['Oxford Cloth', 'Poplin', 'Chambray', 'Flannel', 'Denim', 'Linen', 'Twill'],
+  'TOPS - SWEATSHIRTS & HOODIES': ['Fleece', 'French Terry', 'Sherpa', 'Cotton/Poly Blend', 'Scuba Knit'],
+  'OUTERWEAR - JACKETS': ['Denim', 'Leather', 'Nylon (for Windbreakers)', 'Satin (for Bombers)', 'Twill', 'Canvas', 'Wool'],
+  'OUTERWEAR - COATS & BLAZERS': ['Wool', 'Cashmere Blend', 'Tweed', 'Gabardine (for Trench coats)', 'Down-filled Nylon (for Puffers)'],
+  'OUTERWEAR - VESTS': ['Quilted Nylon', 'Fleece', 'Wool', 'Knit Cotton'],
+  'BOTTOMS - JEANS': ['Raw Denim', 'Stretch Denim', 'Selvedge Denim', 'Washed Denim'],
+  'BOTTOMS - PANTS': ['Cotton Twill (for Chinos)', 'Corduroy', 'Wool', 'Ripstop Cotton (for Cargo)', 'Fleece (for Joggers)'],
+  'BOTTOMS - SHORTS': ['Cotton Twill', 'Nylon', 'Polyester Mesh', 'Denim', 'Seersucker'],
+  'ATHLETIC & SPORTSWEAR': ['Moisture-Wicking Polyester', 'Spandex/Elastane Blend', 'Nylon', 'Mesh', 'Performance Cotton'],
+  'HEADWEAR': ['Cotton Twill', 'Canvas', 'Wool', 'Acrylic Knit (for Beanies)', 'Polyester Mesh'],
+  'FOOTWEAR': ['Leather', 'Suede', 'Canvas', 'Knit Mesh', 'Rubber', 'Synthetic Leather'],
+};
 
-=== DESIGN PLACEMENT AREAS ===
-PRIMARY DESIGN ZONES - MUST BE COMPLETELY FLAT AND UNOBSTRUCTED:
-- FRONT CHEST AREA, BACK PANEL, LEFT CHEST (Small Logo Area), SLEEVES, FRONT THIGH AREA, BACK POCKETS
+// New constants for Advanced AI Features
+export const TARGET_AREAS = ['Center Chest', 'Left Chest Pocket', 'Full Front', 'Upper Back (Yoke)', 'Center Back', 'Left Sleeve', 'Right Sleeve', 'Cap Front'];
+export const FINISH_SIMULATIONS = ['Standard Screen Print', 'High-Density Embroidery', 'Heavy Screen Print Ink', 'Distressed Vintage Print', 'Foil/Metallic Print'];
 
-=== LIGHTING & SHADING (For Photorealistic Style Only) ===
-LIGHT SOURCE:
-- Direction: Top-left at 45-degree angle
-- Type: Soft, diffused natural lighting
-HIGHLIGHTS (Brightest Areas):
-- Location: Shoulders, upper chest, top of sleeves
-- Appearance: Subtle lightening of base color, soft transition
-SHADOWS (Darkest Areas):
-- Location: Under collar, inside pockets, armpit area, inseams
-- Appearance: Darkened version of base color, very soft transition
+// --- PROMPTS ---
 
-=== FINAL OUTPUT DESCRIPTION ===
-The completed mockup will be:
-- Professional-grade illustration suitable for commercial use
-- E-commerce ready for product listings and catalogs
-- Realistic yet clean presentation
-- Perfect for showcasing designs before production
+export const PHOTOREALISTIC_PROMPT = `
+Create a high-end, photorealistic, e-commerce style mockup of a {{garment}}.
+The mockup must show a dual view: the front view on the left, and the back view on the right.
+The garment should be presented in a "ghost mannequin" style, as if laid flat, on a neutral light gray studio background (#E0E0E0) with a subtle floor shadow.
 
-=== VISUAL PURITY RULE ===
-- The generated image must be completely free of any text, labels, annotations, or written descriptions anywhere within the visual.
+The garment's color is {{color}} and it is made of {{material}}. The visual texture, wrinkles, and drape must accurately represent this material.
+The overall design aesthetic is {{designStyle}}.
 
-=== CRITICAL FINAL INSTRUCTION ===
-- It must create only one garment at a time, front and back only.
+**CRITICAL INSTRUCTION:** The final image must be **purely visual**. It must **NOT** contain any text, labels, hangers, props, or human figures. The focus is solely on the garment.
+`;
 
-Add Style Menu Selection (Choose ONE):
+export const TECHNICAL_SKETCH_PROMPT = `
+Create a professional, clean, dual-view technical flat sketch of a {{garment}}.
+The sketch must only show the front view and the back view of the garment, side-by-side on a pure white background.
 
-Trend Revival:
-[Y2K/Early 2000s] (Bubbly fonts, airbrush, bright colors, low-rise aesthetics)
-[90s Streetwear] (Graffiti, bold graphics, logo mania, vintage hip-hop)
-[80s Synthwave/Vaporwave] (Neon, grid lines, retro-futuristic, marble statues, glitch effect)
+The garment's design style is {{designStyle}}.
+The entire sketch should be filled with the solid color {{color}}.
+Simulate the texture of {{material}} using a very subtle and clean vector pattern within the fill.
+The line work should be black with a consistent stroke weight. There should be no photorealistic shading or gradients.
 
-Modern Aesthetics:
-[Athleisure/Cozywear] (Clean typography, minimalist branding, technical fabric look)
-[Minimalist/Normcore] (Simple lines, negative space, subtle logos, monochrome palette)
-[Cyberpunk/Techwear] (Sci-fi, distressed, Japanese text elements, technical diagrams)
-[Grunge/Distressed] (Worn, ripped, layered, messy collage, punk influence)
-[Cottagecore/Boho] (Nature-inspired, floral patterns, embroidery, soft colors, vintage charm)
-[Gorpcore/Outdoor] (Utility graphics, map lines, functional text, nature motifs)
+**CRITICAL INSTRUCTION:** The final image must be **100% visual**. It must **NOT** contain any text, letters, numbers, annotations, or callouts of any kind. The output should be only the garment drawing on a white background. This is a strict and absolute requirement.
+`;
 
-Artistic/Luxury:
-[Haute Couture/Luxury] (Elegant typography, intricate details, subtle branding, high-quality texture)
-[Abstract Art/Expressionist] (Non-representational, bold brushstrokes, expressive colors)
-[Tattoo Style] (Classic or modern tattoo motifs, bold lines, blackwork or colorful)
+export const FOOTWEAR_SKETCH_PROMPT = `
+Create a professional, 5-view technical flat sketch of a {{garment}}.
+The sketch must show the FRONT, BACK, LEFT SIDE, RIGHT SIDE, and SOLE views, all arranged logically on a single pure white background.
+
+The footwear's design style is {{designStyle}}.
+The entire sketch should be filled with the solid color {{color}}.
+Simulate the texture of {{material}} using a subtle and clean vector pattern within the fill.
+The line work should be black with a consistent stroke weight.
+
+**CRITICAL LABELING INSTRUCTION:** Place a clean, capitalized, sans-serif label directly below each of the 5 views. The labels must be exactly: "FRONT", "BACK", "LEFT SIDE", "RIGHT SIDE", and "SOLE".
+No other text, annotations, or human figures should be present in the final image.
 `;

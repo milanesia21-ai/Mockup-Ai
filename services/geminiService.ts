@@ -1,5 +1,5 @@
 import { GoogleGenAI, Modality } from "@google/genai";
-import { BASE_PROMPT, StyleOption, AspectRatioOption } from '../constants';
+import { PHOTOREALISTIC_PROMPT, TECHNICAL_SKETCH_PROMPT, FOOTWEAR_SKETCH_PROMPT, StyleOption, AspectRatioOption, GARMENT_CATEGORIES } from '../constants';
 
 const API_KEY = process.env.API_KEY;
 
@@ -19,22 +19,28 @@ export async function generateMockup(
   garment: string,
   style: StyleOption,
   aspectRatio: AspectRatioOption,
-  designStyle: string
+  designStyle: string,
+  color: string,
+  material: string
 ): Promise<string> {
-  const styleDescription = style === 'Technical Sketch Style'
-    ? 'OPTION A - Technical Sketch Style (Fashion Tech Pack)'
-    : 'OPTION B - Photorealistic Mockup';
+  const footwearCategory = GARMENT_CATEGORIES.find(cat => cat.name === 'FOOTWEAR');
+  const isFootwear = footwearCategory?.items.includes(garment) ?? false;
 
-  const fullPrompt = `
-Create a professional vector mockup of men's apparel with the following comprehensive specifications:
+  let basePrompt: string;
 
-=== USER SELECTION ===
-GARMENT: ${garment}
-STYLE: ${styleDescription}
-DESIGN STYLE: ${designStyle}
-
-${BASE_PROMPT}
-`;
+  if (isFootwear) {
+    basePrompt = FOOTWEAR_SKETCH_PROMPT;
+  } else if (style === 'Technical Sketch Style') {
+    basePrompt = TECHNICAL_SKETCH_PROMPT;
+  } else {
+    basePrompt = PHOTOREALISTIC_PROMPT;
+  }
+  
+  const fullPrompt = basePrompt
+    .replace('{{garment}}', garment)
+    .replace('{{color}}', color)
+    .replace('{{material}}', material)
+    .replace('{{designStyle}}', designStyle);
 
   try {
     const response = await ai.models.generateImages({
@@ -55,12 +61,16 @@ ${BASE_PROMPT}
     }
   } catch (error) {
     console.error("Error calling Gemini API for mockup generation:", error);
-    throw new Error("Failed to generate mockup. Please check the console for more details.");
+    throw new Error("Failed to generate mockup. The AI may be experiencing issues. Please try again later.");
   }
 }
 
-export async function generateGraphic(prompt: string, garment: string): Promise<string> {
-  const fullPrompt = `Create a high-resolution, professional graphic of "${prompt}". The graphic MUST have a transparent background. It should be in a vector or clean logo style, suitable for placing on a ${garment}. Do not include the garment itself, only the graphic.`;
+export async function generateGraphic(prompt: string, garment: string, targetArea: string): Promise<string> {
+  const fullPrompt = `Create a high-resolution, professional graphic of "${prompt}". 
+  The graphic MUST have a transparent background. 
+  It should be in a vector or clean logo style, suitable for placing on a ${garment}.
+  The shape and aspect ratio should be optimized to fit well on the ${targetArea} of the garment.
+  Do not include the garment itself, only the graphic.`;
 
   try {
     const response = await ai.models.generateImages({
@@ -69,7 +79,7 @@ export async function generateGraphic(prompt: string, garment: string): Promise<
       config: {
         numberOfImages: 1,
         outputMimeType: 'image/png',
-        aspectRatio: '1:1', // Graphics are typically square
+        aspectRatio: '1:1', // Start with square, but prompt guides shape
       },
     });
 
@@ -114,4 +124,58 @@ export async function editImage(baseImage: string, prompt: string): Promise<stri
     console.error("Error calling Gemini API for image editing:", error);
     throw new Error("Failed to edit image. Please check the console for more details.");
    }
+}
+
+
+// --- NEW ADVANCED AI FUNCTIONS ---
+
+export async function checkContrast(baseImage: string, graphic: string, garmentColor: string): Promise<string> {
+  const prompt = `Analyze the contrast between the provided graphic and the base apparel mockup. The apparel's primary color is ${garmentColor}. Is the graphic clearly visible and legible, or does it blend in? Provide a concise, one-sentence analysis with a recommendation if the contrast is poor.`;
+  
+  const imagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(baseImage) } };
+  const graphicPart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(graphic) } };
+  const textPart = { text: prompt };
+  
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [imagePart, graphicPart, textPart] },
+  });
+  
+  return response.text;
+}
+
+export async function generateGraphicVariation(originalPrompt: string, garment: string, targetArea: string): Promise<string> {
+  const variationPrompt = `Generate a creative variation of the following graphic concept: "${originalPrompt}". Offer a different composition, style, or take on the subject matter, but keep the core idea. The graphic MUST have a transparent background, be suitable for a ${garment}, and be optimized for the ${targetArea}.`;
+  
+  // This re-uses the generateGraphic logic but with a more creative prompt
+  return generateGraphic(variationPrompt, garment, targetArea);
+}
+
+
+export async function reversePromptFromImage(imageDataUrl: string): Promise<string> {
+  const prompt = "Analyze this image and describe it as a detailed, concise text prompt that could be used to generate a similar vector graphic. Focus on the subject, style, and key elements.";
+  
+  const imagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(imageDataUrl) } };
+  const textPart = { text: prompt };
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [imagePart, textPart] },
+  });
+
+  return response.text.replace(/(\r\n|\n|\r)/gm, " ").replace(/"/g, ""); // Clean up response
+}
+
+export async function runPrintSafetyCheck(graphic: string): Promise<string> {
+  const prompt = `Analyze this graphic for print readiness on apparel. Are there any elements, such as lines or details, that are too thin or small to be printed clearly using standard screen printing methods? Provide a one-sentence summary of your findings. If issues are found, be specific (e.g., "The whiskers on the cat are too thin for printing.").`;
+  
+  const imagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(graphic) } };
+  const textPart = { text: prompt };
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: { parts: [imagePart, textPart] },
+  });
+
+  return response.text;
 }
