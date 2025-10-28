@@ -1,5 +1,4 @@
 import React, { useRef } from 'react';
-// FIX: Import Dispatch and SetStateAction for correct prop typing.
 import type { Dispatch, SetStateAction } from 'react';
 import { DraggableGraphic } from './DraggableGraphic';
 
@@ -9,8 +8,12 @@ interface DisplayAreaProps {
   error: string | null;
   generatedImage: string | null;
   graphic: string | null;
-  // FIX: Update the type to correctly reflect that it's a state setter function from useState.
+  graphicPosition: { x: number; y: number };
   onGraphicPositionChange: Dispatch<SetStateAction<{ x: number; y: number }>>;
+  graphicSize: number;
+  onGraphicSizeChange: Dispatch<SetStateAction<number>>;
+  graphicRotation: number;
+  graphicFlip: { horizontal: boolean; vertical: boolean };
 }
 
 const Placeholder: React.FC = () => (
@@ -53,7 +56,19 @@ const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 
 
-export const DisplayArea: React.FC<DisplayAreaProps> = ({ isLoading, loadingMessage, error, generatedImage, graphic, onGraphicPositionChange }) => {
+export const DisplayArea: React.FC<DisplayAreaProps> = ({ 
+    isLoading, 
+    loadingMessage, 
+    error, 
+    generatedImage, 
+    graphic, 
+    graphicPosition, 
+    onGraphicPositionChange,
+    graphicSize,
+    onGraphicSizeChange,
+    graphicRotation,
+    graphicFlip
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleDownload = async () => {
@@ -75,21 +90,20 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({ isLoading, loadingMess
     if (graphic) {
       const graphicImg = new Image();
       graphicImg.crossOrigin = "anonymous";
-      const graphicPos = await new Promise<{ x: number; y: number }>((resolve) => {
-        // A bit of a hack to get the latest position state for the canvas composition
-        onGraphicPositionChange((currentPos) => {
-          resolve(currentPos);
-          return currentPos;
-        });
-      });
       graphicImg.src = graphic;
       await new Promise(resolve => { graphicImg.onload = resolve; });
       
-      const targetWidth = canvas.width * 0.3; // Graphic will be 30% of the mockup's width
+      const targetWidth = canvas.width * graphicSize;
       const targetHeight = (graphicImg.naturalHeight / graphicImg.naturalWidth) * targetWidth;
-      const targetX = (graphicPos.x * canvas.width) - (targetWidth / 2);
-      const targetY = (graphicPos.y * canvas.height) - (targetHeight / 2);
-      ctx.drawImage(graphicImg, targetX, targetY, targetWidth, targetHeight);
+      const targetX = (graphicPosition.x * canvas.width) - (targetWidth / 2);
+      const targetY = (graphicPosition.y * canvas.height) - (targetHeight / 2);
+      
+      ctx.save();
+      ctx.translate(targetX + targetWidth / 2, targetY + targetHeight / 2);
+      ctx.rotate(graphicRotation * Math.PI / 180);
+      ctx.scale(graphicFlip.horizontal ? -1 : 1, graphicFlip.vertical ? -1 : 1);
+      ctx.drawImage(graphicImg, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+      ctx.restore();
     }
 
     const link = document.createElement('a');
@@ -113,7 +127,12 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({ isLoading, loadingMess
              <DraggableGraphic 
               containerRef={containerRef}
               src={graphic} 
+              initialPosition={graphicPosition}
               onPositionChange={onGraphicPositionChange}
+              initialSize={graphicSize}
+              onSizeChange={onGraphicSizeChange}
+              initialRotation={graphicRotation}
+              flip={graphicFlip}
              />
           )}
           <button

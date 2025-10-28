@@ -4,6 +4,11 @@ interface EditorPanelProps {
     onGenerateGraphic: (prompt: string) => void;
     onEditImage: (prompt: string) => void;
     isLoading: boolean;
+    hasGraphic: boolean;
+    graphicRotation: number;
+    onGraphicRotationChange: (value: number) => void;
+    graphicFlip: { horizontal: boolean, vertical: boolean };
+    onGraphicFlipChange: React.Dispatch<React.SetStateAction<{ horizontal: boolean, vertical: boolean }>>;
 }
 
 const LoadingSpinner: React.FC = () => (
@@ -16,7 +21,16 @@ const LoadingSpinner: React.FC = () => (
     </div>
 );
 
-export const EditorPanel: React.FC<EditorPanelProps> = ({ onGenerateGraphic, onEditImage, isLoading }) => {
+export const EditorPanel: React.FC<EditorPanelProps> = ({ 
+    onGenerateGraphic, 
+    onEditImage, 
+    isLoading,
+    hasGraphic,
+    graphicRotation,
+    onGraphicRotationChange,
+    graphicFlip,
+    onGraphicFlipChange
+}) => {
     const [graphicPrompt, setGraphicPrompt] = useState('');
     const [editPrompt, setEditPrompt] = useState('');
 
@@ -41,8 +55,42 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({ onGenerateGraphic, onE
                 </button>
             </div>
 
+            <div className={`border-t border-gray-700 pt-6 ${!hasGraphic ? 'opacity-50' : ''}`}>
+                <h3 className="text-lg font-semibold mb-2 text-white">B. Graphic Settings</h3>
+                <p className="text-sm text-gray-400 mb-3">Adjust the graphic. For size, drag the corner of the graphic on the mockup.</p>
+                
+                <div className="mb-4">
+                    <label htmlFor="rotation" className="block text-sm font-medium text-gray-300 mb-1">Rotation (°)</label>
+                    <input
+                        type="number"
+                        id="rotation"
+                        value={graphicRotation}
+                        onChange={(e) => onGraphicRotationChange(parseInt(e.target.value, 10) || 0)}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white"
+                        disabled={isLoading || !hasGraphic}
+                    />
+                </div>
+
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => onGraphicFlipChange(f => ({ ...f, horizontal: !f.horizontal }))}
+                        disabled={isLoading || !hasGraphic}
+                        className="w-full bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-500 disabled:opacity-50 transition-colors"
+                    >
+                        Flip Horizontal {graphicFlip.horizontal && '✓'}
+                    </button>
+                    <button
+                        onClick={() => onGraphicFlipChange(f => ({ ...f, vertical: !f.vertical }))}
+                        disabled={isLoading || !hasGraphic}
+                        className="w-full bg-gray-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-500 disabled:opacity-50 transition-colors"
+                    >
+                        Flip Vertical {graphicFlip.vertical && '✓'}
+                    </button>
+                </div>
+            </div>
+
             <div className="border-t border-gray-700 pt-6">
-                <h3 className="text-lg font-semibold mb-2 text-white">B. Edit the Whole Image</h3>
+                <h3 className="text-lg font-semibold mb-2 text-white">C. Edit the Whole Image</h3>
                 <p className="text-sm text-gray-400 mb-3">Describe a change to apply to the entire mockup (e.g., "add a vintage photo filter", "change the background to a cityscape"). This will merge any placed graphic.</p>
                 <textarea
                     value={editPrompt}

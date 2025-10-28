@@ -20,7 +20,13 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [graphic, setGraphic] = useState<string | null>(null);
-  const [graphicPosition, setGraphicPosition] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.25 }); // Percentage-based
+
+  // New state for graphic transformations
+  const [graphicPosition, setGraphicPosition] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.25 }); // Center position, percentage
+  const [graphicSize, setGraphicSize] = useState<number>(0.3); // 30% of mockup width
+  const [graphicRotation, setGraphicRotation] = useState<number>(0); // degrees
+  const [graphicFlip, setGraphicFlip] = useState<{ horizontal: boolean, vertical: boolean }>({ horizontal: false, vertical: false });
+
 
   const garmentItems = useMemo(() => {
     const category = GARMENT_CATEGORIES.find(cat => cat.name === selectedCategory);
@@ -63,7 +69,11 @@ const App: React.FC = () => {
     try {
       const graphicDataUrl = await generateGraphic(prompt, selectedGarment);
       setGraphic(graphicDataUrl);
-      setGraphicPosition({ x: 0.5, y: 0.25 }); // Reset position
+      // Reset all graphic transformations
+      setGraphicPosition({ x: 0.5, y: 0.25 }); 
+      setGraphicSize(0.3);
+      setGraphicRotation(0);
+      setGraphicFlip({ horizontal: false, vertical: false });
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred creating the graphic.');
@@ -90,36 +100,45 @@ const App: React.FC = () => {
       if (graphic) {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
+          if (!ctx) throw new Error("Could not get canvas context");
+
           const baseImg = new Image();
           baseImg.src = generatedImage;
           await new Promise(resolve => { baseImg.onload = resolve; });
           
           canvas.width = baseImg.width;
           canvas.height = baseImg.height;
-          ctx!.drawImage(baseImg, 0, 0);
+          ctx.drawImage(baseImg, 0, 0);
 
           const graphicImg = new Image();
           graphicImg.src = graphic;
           await new Promise(resolve => { graphicImg.onload = resolve; });
           
-          const targetWidth = canvas.width * 0.3; // Example size: 30% of mockup width
+          const targetWidth = canvas.width * graphicSize;
           const targetHeight = (graphicImg.height / graphicImg.width) * targetWidth;
           const targetX = (graphicPosition.x * canvas.width) - (targetWidth / 2);
           const targetY = (graphicPosition.y * canvas.height) - (targetHeight / 2);
-          ctx!.drawImage(graphicImg, targetX, targetY, targetWidth, targetHeight);
+          
+          ctx.save();
+          ctx.translate(targetX + targetWidth / 2, targetY + targetHeight / 2);
+          ctx.rotate(graphicRotation * Math.PI / 180);
+          ctx.scale(graphicFlip.horizontal ? -1 : 1, graphicFlip.vertical ? -1 : 1);
+          ctx.drawImage(graphicImg, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+          ctx.restore();
+
           imageToEdit = canvas.toDataURL('image/png');
       }
 
       const editedImageDataUrl = await editImage(imageToEdit, prompt);
       setGeneratedImage(editedImageDataUrl);
       setGraphic(null); // Clear graphic after merging it into the base image
-    } catch (err) {
+    } catch (err)      {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred while editing the image.');
     } finally {
       setIsLoading(false);
     }
-  }, [generatedImage, graphic, graphicPosition]);
+  }, [generatedImage, graphic, graphicPosition, graphicSize, graphicRotation, graphicFlip]);
 
 
   return (
@@ -159,6 +178,11 @@ const App: React.FC = () => {
                 onGenerateGraphic={handleGenerateGraphic}
                 onEditImage={handleEditImage}
                 isLoading={isLoading}
+                hasGraphic={!!graphic}
+                graphicRotation={graphicRotation}
+                onGraphicRotationChange={setGraphicRotation}
+                graphicFlip={graphicFlip}
+                onGraphicFlipChange={setGraphicFlip}
                />
             )}
           </div>
@@ -170,7 +194,12 @@ const App: React.FC = () => {
             error={error}
             generatedImage={generatedImage}
             graphic={graphic}
+            graphicPosition={graphicPosition}
             onGraphicPositionChange={setGraphicPosition}
+            graphicSize={graphicSize}
+            onGraphicSizeChange={setGraphicSize}
+            graphicRotation={graphicRotation}
+            graphicFlip={graphicFlip}
           />
         </div>
       </main>
