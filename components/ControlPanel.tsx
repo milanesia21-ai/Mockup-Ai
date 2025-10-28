@@ -1,187 +1,272 @@
-import React from 'react';
-import { GARMENT_CATEGORIES, STYLE_OPTIONS, ASPECT_RATIO_OPTIONS, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, StyleOption, AspectRatioOption } from '../constants';
+import React, { useState, useMemo } from 'react';
+import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, MATERIALS_BY_GARMENT_TYPE, STYLE_OPTIONS, StyleOption, VIEWS } from '../constants';
+import { toast } from 'sonner';
+
+export interface MockupConfig {
+  easyPrompt: string;
+  selectedCategory: string;
+  selectedGarment: string;
+  selectedDesignStyle: string;
+  selectedColor: string;
+  selectedMaterial: string;
+  selectedStyle: StyleOption;
+  selectedViews: string[];
+  aiApparelPrompt: string;
+  useAiApparel: boolean;
+  aiModelPrompt: string;
+  aiScenePrompt: string;
+  useAiModelScene: boolean;
+}
 
 interface ControlPanelProps {
-  selectedCategory: string;
-  onCategoryChange: (value: string) => void;
-  garmentItems: string[];
-  selectedGarment: string;
-  onGarmentChange: (value: string) => void;
-  selectedDesignStyle: string;
-  onDesignStyleChange: (value: string) => void;
-  selectedColor: string;
-  onColorChange: (value: string) => void;
-  materialOptions: string[];
-  selectedMaterial: string;
-  onMaterialChange: (value: string) => void;
-  selectedStyle: StyleOption;
-  onStyleChange: (value: StyleOption) => void;
-  selectedAspectRatio: AspectRatioOption;
-  onAspectRatioChange: (value: AspectRatioOption) => void;
+  config: MockupConfig;
+  setConfig: React.Dispatch<React.SetStateAction<MockupConfig>>;
   onGenerate: () => void;
+  onParseEasyPrompt: () => void;
+  onInspireMe: () => void;
+  presets: Record<string, MockupConfig>;
+  onSavePreset: () => void;
+  onLoadPreset: (name: string) => void;
+  onDeletePreset: (name: string) => void;
   isLoading: boolean;
 }
 
-const SelectInput: React.FC<{
+const InputField: React.FC<{
   label: string;
   value: string;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  options: { value: string; label: string }[];
-  id: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
   disabled?: boolean;
-}> = ({ label, value, onChange, options, id, disabled = false }) => (
+}> = ({ label, value, onChange, placeholder, disabled }) => (
   <div className="mb-4">
-    <label htmlFor={id} className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
-    <select
-      id={id}
+    <label className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+    <input
+      type="text"
       value={value}
-      onChange={onChange}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
       disabled={disabled}
-      className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      {options.map(option => (
-        <option key={option.value} value={option.value}>{option.label}</option>
-      ))}
-    </select>
+      className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white disabled:opacity-50"
+    />
   </div>
 );
 
-
-const RadioGroup: React.FC<{
+const TextAreaField: React.FC<{
   label: string;
-  selectedValue: string;
-  onChange: (value: any) => void;
-  options: { value: string; label: string }[];
-}> = ({ label, selectedValue, onChange, options }) => (
-  <fieldset className="mb-4">
-    <legend className="block text-sm font-medium text-gray-300 mb-2">{label}</legend>
-    <div className="space-y-2">
-      {options.map(option => (
-        <div key={option.value} className="flex items-center">
-          <input
-            id={option.value}
-            name={label}
-            type="radio"
-            value={option.value}
-            checked={selectedValue === option.value}
-            onChange={() => onChange(option.value)}
-            className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-500 bg-gray-700"
-          />
-          <label htmlFor={option.value} className="ml-3 block text-sm font-medium text-gray-300">{option.label}</label>
-        </div>
-      ))}
-    </div>
-  </fieldset>
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  rows?: number;
+}> = ({ label, value, onChange, placeholder, disabled, rows = 3 }) => (
+  <div className="mb-4">
+    <label className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      rows={rows}
+      className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
+    />
+  </div>
 );
 
+const ToggleSwitch: React.FC<{
+  label: string;
+  enabled: boolean;
+  setEnabled: (enabled: boolean) => void;
+}> = ({ label, enabled, setEnabled }) => (
+  <div className="flex items-center justify-between mb-4">
+    <span className="text-sm font-medium text-gray-300">{label}</span>
+    <button
+      type="button"
+      className={`${
+        enabled ? 'bg-indigo-600' : 'bg-gray-600'
+      } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500`}
+      onClick={() => setEnabled(!enabled)}
+    >
+      <span
+        className={`${
+          enabled ? 'translate-x-6' : 'translate-x-1'
+        } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}
+      />
+    </button>
+  </div>
+);
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
-  selectedCategory,
-  onCategoryChange,
-  garmentItems,
-  selectedGarment,
-  onGarmentChange,
-  selectedDesignStyle,
-  onDesignStyleChange,
-  selectedColor,
-  onColorChange,
-  materialOptions,
-  selectedMaterial,
-  onMaterialChange,
-  selectedStyle,
-  onStyleChange,
-  selectedAspectRatio,
-  onAspectRatioChange,
+  config,
+  setConfig,
   onGenerate,
-  isLoading
+  onParseEasyPrompt,
+  onInspireMe,
+  presets,
+  onSavePreset,
+  onLoadPreset,
+  onDeletePreset,
+  isLoading,
 }) => {
+  const handleConfigChange = (key: keyof MockupConfig, value: any) => {
+    setConfig(prev => ({...prev, [key]: value}));
+  };
+  
+  const handleCategoryChange = (category: string) => {
+    const newItems = GARMENT_CATEGORIES.find(cat => cat.name === category)?.items || [];
+    setConfig(prev => ({
+        ...prev,
+        selectedCategory: category,
+        selectedGarment: newItems[0] || ''
+    }));
+  };
+
+  const handleViewToggle = (view: string) => {
+    const newViews = config.selectedViews.includes(view)
+      ? config.selectedViews.filter(v => v !== view)
+      : [...config.selectedViews, view];
+    handleConfigChange('selectedViews', newViews);
+  };
+  
+  const garmentItems = useMemo(() => {
+    const category = GARMENT_CATEGORIES.find(cat => cat.name === config.selectedCategory);
+    return category ? category.items : [];
+  }, [config.selectedCategory]);
+
+  const materialOptions = useMemo(() => {
+    return MATERIALS_BY_GARMENT_TYPE[config.selectedCategory] || [];
+  }, [config.selectedCategory]);
+
   return (
-    <div className="h-full flex flex-col">
-      <h2 className="text-xl font-bold mb-4 text-white">Customize Your Mockup</h2>
+    <div className="h-full flex flex-col space-y-4">
+      <h2 className="text-xl font-bold text-white">Mockup Studio</h2>
       
-      <div className="flex-grow">
-        <SelectInput
-          id="garment-category"
-          label="A. Select Garment Category"
-          value={selectedCategory}
-          onChange={(e) => onCategoryChange(e.target.value)}
-          options={GARMENT_CATEGORIES.map(cat => ({ value: cat.name, label: cat.name }))}
-        />
-
-        <SelectInput
-          id="garment-item"
-          label="B. Select Garment"
-          value={selectedGarment}
-          onChange={(e) => onGarmentChange(e.target.value)}
-          options={garmentItems.map(item => ({ value: item, label: item }))}
-        />
-        
-        <div className="mb-4">
-          <label htmlFor="design-style" className="block text-sm font-medium text-gray-300 mb-1">C. Select Design Style</label>
-          <select
-            id="design-style"
-            value={selectedDesignStyle}
-            onChange={(e) => onDesignStyleChange(e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-white"
-          >
-            {DESIGN_STYLE_CATEGORIES.map(category => (
-              <optgroup key={category.name} label={category.name}>
-                {category.items.map(item => (
-                  <option key={item} value={item}>{item}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+      {/* Easy Mode */}
+      <div className="bg-gray-700/50 p-4 rounded-lg">
+        <label className="block text-sm font-bold text-indigo-400 mb-2">Easy Mode</label>
+        <div className="flex gap-2">
+            <input
+              type="text"
+              value={config.easyPrompt}
+              onChange={(e) => handleConfigChange('easyPrompt', e.target.value)}
+              placeholder="e.g., photorealistic black cotton hoodie..."
+              className="flex-grow bg-gray-900 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white"
+            />
+            <button onClick={onParseEasyPrompt} className="bg-indigo-600 px-3 rounded-md hover:bg-indigo-700" title="Auto-fill options from prompt">
+                🪄
+            </button>
         </div>
-
-        <SelectInput
-          id="garment-color"
-          label="D. Select Color"
-          value={selectedColor}
-          onChange={(e) => onColorChange(e.target.value)}
-          options={GARMENT_COLORS.map(color => ({ value: color, label: color }))}
-        />
-
-        <SelectInput
-          id="garment-material"
-          label="E. Select Material"
-          value={selectedMaterial}
-          onChange={(e) => onMaterialChange(e.target.value)}
-          options={materialOptions.map(material => ({ value: material, label: material }))}
-          disabled={materialOptions.length === 0}
-        />
-        
-        <RadioGroup
-          label="F. Select Mockup Style"
-          selectedValue={selectedStyle}
-          onChange={onStyleChange}
-          options={STYLE_OPTIONS.map(style => ({ value: style, label: style }))}
-        />
-
-        <SelectInput
-          id="aspect-ratio"
-          label="G. Select Aspect Ratio"
-          value={selectedAspectRatio}
-          onChange={(e) => onAspectRatioChange(e.target.value as AspectRatioOption)}
-          options={ASPECT_RATIO_OPTIONS.map(ratio => ({ value: ratio, label: ratio }))}
-        />
       </div>
 
-      <button
-        onClick={onGenerate}
-        disabled={isLoading}
-        className="w-full mt-4 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:from-purple-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 ease-in-out transform hover:scale-105"
-      >
-        {isLoading ? (
-          <div className="flex items-center justify-center">
-            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Generating...
-          </div>
-        ) : 'Generate Mockup'}
-      </button>
+      {/* Pro Mode */}
+      <div className="flex-grow space-y-4 overflow-y-auto pr-2">
+        <div className="border-t border-gray-700 pt-4">
+            <h3 className="text-lg font-semibold text-white mb-2">Professional Options</h3>
+
+            <ToggleSwitch label="Generate Custom Apparel with AI" enabled={config.useAiApparel} setEnabled={(val) => handleConfigChange('useAiApparel', val)} />
+            {config.useAiApparel ? (
+                <TextAreaField label="Describe Apparel" value={config.aiApparelPrompt} onChange={(val) => handleConfigChange('aiApparelPrompt', val)} placeholder="e.g., a 1980s sci-fi jacket with high collar"/>
+            ) : (
+                <>
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Garment Category</label>
+                        <select value={config.selectedCategory} onChange={(e) => handleCategoryChange(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500">
+                            {GARMENT_CATEGORIES.map(cat => <option key={cat.name} value={cat.name}>{cat.name}</option>)}
+                        </select>
+                    </div>
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Garment Type</label>
+                        <select value={config.selectedGarment} onChange={(e) => handleConfigChange('selectedGarment', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500">
+                           {garmentItems.map(item => <option key={item} value={item}>{item}</option>)}
+                        </select>
+                    </div>
+                </>
+            )}
+
+            <ToggleSwitch label="Show on AI Model & Scene" enabled={config.useAiModelScene} setEnabled={(val) => handleConfigChange('useAiModelScene', val)} />
+            {config.useAiModelScene && (
+                <div className="bg-gray-700/50 p-3 rounded-md">
+                    <InputField label="Describe Model" value={config.aiModelPrompt} onChange={(val) => handleConfigChange('aiModelPrompt', val)} placeholder="e.g., male model, athletic build"/>
+                    <InputField label="Describe Background" value={config.aiScenePrompt} onChange={(val) => handleConfigChange('aiScenePrompt', val)} placeholder="e.g., on a city rooftop at dusk"/>
+                </div>
+            )}
+        </div>
+
+        <div className="border-t border-gray-700 pt-4 space-y-4">
+            <h3 className="text-lg font-semibold text-white mb-2">Details & Style</h3>
+            <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-1">Color</label>
+                <input type="color" value={config.selectedColor} onChange={(e) => handleConfigChange('selectedColor', e.target.value)} className="w-full h-10 p-1 bg-gray-700 border-gray-600 rounded-md"/>
+            </div>
+             <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-1">Material</label>
+                <select value={config.selectedMaterial} onChange={(e) => handleConfigChange('selectedMaterial', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500" disabled={materialOptions.length === 0}>
+                    {materialOptions.map(item => <option key={item} value={item}>{item}</option>)}
+                </select>
+                <button onClick={() => toast.info('Custom texture uploads coming soon!')} className="text-xs text-indigo-400 hover:underline mt-1">Upload Custom Fabric Texture</button>
+            </div>
+             <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-1">Design Style</label>
+                <select value={config.selectedDesignStyle} onChange={(e) => handleConfigChange('selectedDesignStyle', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500">
+                    {DESIGN_STYLE_CATEGORIES.map(category => (
+                        <optgroup key={category.name} label={category.name}>
+                            {category.items.map(item => <option key={item} value={item}>{item}</option>)}
+                        </optgroup>
+                    ))}
+                </select>
+            </div>
+             <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-1">Mockup Style</label>
+                 <select value={config.selectedStyle} onChange={(e) => handleConfigChange('selectedStyle', e.target.value as StyleOption)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500">
+                    {STYLE_OPTIONS.map(item => <option key={item} value={item}>{item}</option>)}
+                </select>
+            </div>
+             <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-1">Generate Views</label>
+                <div className="grid grid-cols-4 gap-2">
+                    {VIEWS.map(view => (
+                        <button key={view} onClick={() => handleViewToggle(view)} className={`text-center py-2 rounded-md text-sm ${config.selectedViews.includes(view) ? 'bg-indigo-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                            {view}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>
+        
+        <div className="border-t border-gray-700 pt-4">
+             <h3 className="text-lg font-semibold text-white mb-2">Presets</h3>
+             <div className="flex gap-2">
+                <select onChange={(e) => onLoadPreset(e.target.value)} className="flex-grow bg-gray-700 border border-gray-600 rounded-md py-2 px-3" defaultValue="">
+                    <option value="" disabled>Load Preset...</option>
+                    {Object.keys(presets).map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+                <button onClick={onSavePreset} className="bg-gray-600 px-3 rounded-md hover:bg-gray-500" title="Save current settings as preset">💾</button>
+             </div>
+             {Object.keys(presets).length > 0 && (
+                <div className="text-xs mt-2 space-y-1">
+                    {Object.keys(presets).map(name => (
+                        <div key={name} className="flex justify-between items-center bg-gray-900/50 p-1 rounded">
+                            <span>{name}</span>
+                            <button onClick={() => onDeletePreset(name)} className="text-red-500 hover:text-red-400">🗑️</button>
+                        </div>
+                    ))}
+                </div>
+             )}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex-shrink-0 border-t border-gray-700 pt-4 flex items-center gap-2">
+        <button
+          onClick={onGenerate}
+          disabled={isLoading}
+          className="flex-grow bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:from-purple-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 disabled:opacity-50 transition-transform transform hover:scale-105"
+        >
+          {isLoading ? 'Generating...' : 'Generate Mockup'}
+        </button>
+        <button onClick={onInspireMe} disabled={isLoading} className="p-3 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:opacity-50" title="Inspire Me!">
+            🎲
+        </button>
+      </div>
     </div>
   );
 };

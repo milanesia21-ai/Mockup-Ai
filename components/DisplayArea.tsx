@@ -1,18 +1,14 @@
 import React, { useRef } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
 import { DraggableGraphic } from './DraggableGraphic';
+import { DesignLayer } from './EditorPanel';
 
 interface DisplayAreaProps {
-  generatedImage: string | null;
-  graphic: string | null;
-  graphicPosition: { x: number; y: number };
-  onGraphicPositionChange: Dispatch<SetStateAction<{ x: number; y: number }>>;
-  graphicSize: number;
-  onGraphicSizeChange: Dispatch<SetStateAction<number>>;
-  graphicRotation: number;
-  graphicFlip: { horizontal: boolean; vertical: boolean };
-  finishSimulation: string;
-  smartDisplacement: boolean;
+  baseImages: string[];
+  finalImage: string | null;
+  layers: DesignLayer[];
+  activeLayerId: string | null;
+  onSetActiveLayer: (id: string | null) => void;
+  onUpdateLayer: (id: string, updates: Partial<DesignLayer>) => void;
 }
 
 const Placeholder: React.FC = () => (
@@ -33,87 +29,77 @@ const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 
 export const DisplayArea: React.FC<DisplayAreaProps> = ({ 
-    generatedImage, 
-    graphic, 
-    graphicPosition, 
-    onGraphicPositionChange,
-    graphicSize,
-    onGraphicSizeChange,
-    graphicRotation,
-    graphicFlip,
-    finishSimulation,
-    smartDisplacement
+    baseImages, 
+    finalImage,
+    layers,
+    activeLayerId,
+    onSetActiveLayer,
+    onUpdateLayer,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const primaryImage = finalImage || baseImages[0] || null;
 
-  const handleDownload = async () => {
-    if (!generatedImage) return;
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const baseImg = new Image();
-    baseImg.crossOrigin = "anonymous";
-    baseImg.src = generatedImage;
-    await new Promise(resolve => { baseImg.onload = resolve; });
-
-    canvas.width = baseImg.naturalWidth;
-    canvas.height = baseImg.naturalHeight;
-    ctx.drawImage(baseImg, 0, 0);
-
-    if (graphic) {
-      const graphicImg = new Image();
-      graphicImg.crossOrigin = "anonymous";
-      graphicImg.src = graphic;
-      await new Promise(resolve => { graphicImg.onload = resolve; });
-      
-      const targetWidth = canvas.width * graphicSize;
-      const targetHeight = (graphicImg.naturalHeight / graphicImg.naturalWidth) * targetWidth;
-      const targetX = (graphicPosition.x * canvas.width) - (targetWidth / 2);
-      const targetY = (graphicPosition.y * canvas.height) - (targetHeight / 2);
-      
-      ctx.save();
-      // Apply effects before drawing
-      ctx.globalAlpha = smartDisplacement ? 0.9 : 1;
-      ctx.globalCompositeOperation = smartDisplacement ? 'multiply' : 'source-over';
-      
-      ctx.translate(targetX + targetWidth / 2, targetY + targetHeight / 2);
-      ctx.rotate(graphicRotation * Math.PI / 180);
-      ctx.scale(graphicFlip.horizontal ? -1 : 1, graphicFlip.vertical ? -1 : 1);
-      ctx.drawImage(graphicImg, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
-      ctx.restore();
-    }
-
+  const handleDownload = () => {
+    if (!primaryImage) return;
+    
     const link = document.createElement('a');
-    link.download = 'apparel-mockup-custom.png';
-    link.href = canvas.toDataURL('image/png');
+    link.download = 'apparel-mockup-final.png';
+    link.href = primaryImage;
     link.click();
   };
+  
+  const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      // Deselect if clicking the container itself
+      if (e.target === containerRef.current) {
+          onSetActiveLayer(null);
+      }
+  };
+
+  const isGalleryView = baseImages.length > 1 && !finalImage;
 
   return (
-    <div ref={containerRef} className="bg-black w-full h-full min-h-[60vh] lg:min-h-full rounded-lg shadow-2xl flex items-center justify-center p-4 relative overflow-hidden">
-      {generatedImage ? (
+    <div 
+        className="bg-black w-full h-full min-h-[60vh] lg:min-h-full rounded-lg shadow-2xl flex items-center justify-center p-4 relative overflow-hidden"
+    >
+      {primaryImage ? (
         <>
-          <img 
-            src={generatedImage} 
-            alt="Generated apparel mockup" 
-            className="max-w-full max-h-full object-contain rounded-md select-none pointer-events-none"
-          />
-          {graphic && containerRef.current && (
-             <DraggableGraphic 
-              containerRef={containerRef}
-              src={graphic} 
-              initialPosition={graphicPosition}
-              onPositionChange={onGraphicPositionChange}
-              initialSize={graphicSize}
-              onSizeChange={onGraphicSizeChange}
-              initialRotation={graphicRotation}
-              flip={graphicFlip}
-              finishSimulation={finishSimulation}
-              smartDisplacement={smartDisplacement}
-             />
-          )}
+          <div 
+            ref={containerRef} 
+            className="w-full h-full flex items-center justify-center"
+            onClick={handleContainerClick}
+          >
+            {isGalleryView ? (
+                 <div className="grid grid-cols-2 gap-4 w-full h-full">
+                    {baseImages.map((image, index) => (
+                        <img 
+                            key={index}
+                            src={image} 
+                            alt={`Generated apparel mockup view ${index + 1}`}
+                            className="w-full h-full object-contain rounded-md"
+                        />
+                    ))}
+                 </div>
+            ) : (
+                <div className="relative w-full h-full">
+                    <img 
+                        src={primaryImage} 
+                        alt="Generated apparel mockup" 
+                        className="w-full h-full object-contain rounded-md select-none pointer-events-none"
+                    />
+                    {containerRef.current && !finalImage && layers.map(layer => (
+                        <DraggableGraphic 
+                            key={layer.id}
+                            containerRef={containerRef}
+                            layer={layer}
+                            onUpdateLayer={onUpdateLayer}
+                            isActive={activeLayerId === layer.id}
+                            onSetActive={() => onSetActiveLayer(layer.id)}
+                        />
+                    ))}
+                </div>
+            )}
+          </div>
+
           <button
             onClick={handleDownload}
             className="absolute bottom-4 right-4 bg-indigo-600 text-white font-bold py-3 px-5 rounded-full shadow-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"

@@ -1,5 +1,13 @@
-import { GoogleGenAI, Modality } from "@google/genai";
-import { PHOTOREALISTIC_PROMPT, TECHNICAL_SKETCH_PROMPT, FOOTWEAR_SKETCH_PROMPT, StyleOption, AspectRatioOption, GARMENT_CATEGORIES } from '../constants';
+import { GoogleGenAI, Modality, Type } from "@google/genai";
+import { 
+    GARMENT_CATEGORIES, 
+    StyleOption, 
+    PHOTOREALISTIC_APPAREL_PROMPT,
+    PHOTOREALISTIC_SCENE_PROMPT,
+    TECHNICAL_SKETCH_PROMPT,
+    EASY_PROMPT_PARSER,
+    MockupConfig
+} from '../constants';
 
 const API_KEY = process.env.API_KEY;
 
@@ -15,41 +23,71 @@ function dataUrlToBase64(dataUrl: string): string {
   return dataUrl.replace(regex, '');
 }
 
-export async function generateMockup(
-  garment: string,
-  style: StyleOption,
-  aspectRatio: AspectRatioOption,
-  designStyle: string,
-  color: string,
-  material: string
-): Promise<string> {
-  const footwearCategory = GARMENT_CATEGORIES.find(cat => cat.name === 'FOOTWEAR');
-  const isFootwear = footwearCategory?.items.includes(garment) ?? false;
+export async function parseEasyPrompt(prompt: string): Promise<Partial<MockupConfig>> {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: EASY_PROMPT_PARSER.replace('{{prompt}}', prompt),
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            selectedGarment: { type: Type.STRING },
+            selectedDesignStyle: { type: Type.STRING },
+            selectedColor: { type: Type.STRING },
+            selectedMaterial: { type: Type.STRING },
+            selectedStyle: { type: Type.STRING },
+          }
+        },
+      },
+    });
 
-  let basePrompt: string;
-
-  if (isFootwear) {
-    basePrompt = FOOTWEAR_SKETCH_PROMPT;
-  } else if (style === 'Technical Sketch Style') {
-    basePrompt = TECHNICAL_SKETCH_PROMPT;
-  } else {
-    basePrompt = PHOTOREALISTIC_PROMPT;
+    const jsonString = response.text.trim();
+    return JSON.parse(jsonString) as Partial<MockupConfig>;
+  } catch (error) {
+    console.error("Error parsing easy prompt:", error);
+    throw new Error("The AI couldn't understand that request. Please try rephrasing.");
   }
+}
+
+export async function generateMockup(
+  config: MockupConfig,
+  view: string
+): Promise<string> {
+  let finalPrompt: string;
   
-  const fullPrompt = basePrompt
-    .replace('{{garment}}', garment)
-    .replace('{{color}}', color)
-    .replace('{{material}}', material)
-    .replace('{{designStyle}}', designStyle);
+  const garmentDescription = config.useAiApparel ? config.aiApparelPrompt : config.selectedGarment;
+
+  if (config.selectedStyle === 'Technical Sketch Style') {
+     // Use the dedicated, unambiguous prompt for technical sketches
+     finalPrompt = TECHNICAL_SKETCH_PROMPT
+      .replace('{{garment}}', garmentDescription)
+      .replace('{{color}}', config.selectedColor)
+      .replace('{{designStyle}}', config.selectedDesignStyle)
+      .replace('{{view}}', view);
+  } else {
+    // Use the photorealistic prompts for all other cases
+    let basePrompt = config.useAiModelScene ? PHOTOREALISTIC_SCENE_PROMPT : PHOTOREALISTIC_APPAREL_PROMPT;
+  
+    finalPrompt = basePrompt
+      .replace('{{garment}}', garmentDescription)
+      .replace('{{color}}', config.selectedColor)
+      .replace('{{material}}', config.selectedMaterial)
+      .replace('{{designStyle}}', config.selectedDesignStyle)
+      .replace('{{view}}', view)
+      .replace('{{model}}', config.aiModelPrompt)
+      .replace('{{scene}}', config.aiScenePrompt);
+  }
 
   try {
     const response = await ai.models.generateImages({
       model: 'imagen-4.0-generate-001',
-      prompt: fullPrompt,
+      prompt: finalPrompt,
       config: {
         numberOfImages: 1,
         outputMimeType: 'image/png',
-        aspectRatio: aspectRatio,
+        aspectRatio: '1:1', // Aspect ratio control is simplified in this new model
       },
     });
 
@@ -79,7 +117,7 @@ export async function generateGraphic(prompt: string, garment: string, targetAre
       config: {
         numberOfImages: 1,
         outputMimeType: 'image/png',
-        aspectRatio: '1:1', // Start with square, but prompt guides shape
+        aspectRatio: '1:1',
       },
     });
 
@@ -95,19 +133,25 @@ export async function generateGraphic(prompt: string, garment: string, targetAre
   }
 }
 
-export async function editImage(baseImage: string, prompt: string): Promise<string> {
+export async function renderRealisticComposite(baseImage: string, compositeGraphic: string): Promise<string> {
+   const prompt = `
+    Analyze the provided base apparel image and the separate composite graphic image.
+    Your task is to create a new, hyper-realistic composite image by fusing the graphic onto the apparel.
+
+    CRITICAL INSTRUCTIONS:
+    1.  **Smart Displacement Mapping:** The graphic must be perfectly integrated into the apparel. It must follow and distort according to the fabric's natural folds, creases, wrinkles, and texture. It should not look like a flat sticker.
+    2.  **Realistic Lighting:** Analyze the lighting and shadows of the base image (direction, softness, intensity) and accurately apply them to the graphic. The graphic must look like it exists in the same environment as the garment.
+    3.  **Maintain Integrity:** Do not change the apparel, the graphic's core design, or the background. The final output must be a single, photorealistic image of the printed garment.
+   `;
+
    try {
-    const imagePart = {
-      inlineData: {
-        mimeType: 'image/png',
-        data: dataUrlToBase64(baseImage),
-      },
-    };
+    const baseImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(baseImage) } };
+    const graphicPart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(compositeGraphic) } };
     const textPart = { text: prompt };
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: { parts: [imagePart, textPart] },
+      contents: { parts: [textPart, baseImagePart, graphicPart] },
       config: {
         responseModalities: [Modality.IMAGE],
       },
@@ -118,64 +162,10 @@ export async function editImage(baseImage: string, prompt: string): Promise<stri
       const base64ImageBytes: string = part.inlineData.data;
       return `data:image/png;base64,${base64ImageBytes}`;
     } else {
-      throw new Error("No edited image was returned from the API.");
+      throw new Error("The AI failed to render the realistic composite image.");
     }
    } catch (error) {
-    console.error("Error calling Gemini API for image editing:", error);
-    throw new Error("Failed to edit image. Please check the console for more details.");
+    console.error("Error calling Gemini API for realistic rendering:", error);
+    throw new Error("Failed to render realistic mockup. Please check the console for more details.");
    }
-}
-
-
-// --- NEW ADVANCED AI FUNCTIONS ---
-
-export async function checkContrast(baseImage: string, graphic: string, garmentColor: string): Promise<string> {
-  const prompt = `Analyze the contrast between the provided graphic and the base apparel mockup. The apparel's primary color is ${garmentColor}. Is the graphic clearly visible and legible, or does it blend in? Provide a concise, one-sentence analysis with a recommendation if the contrast is poor.`;
-  
-  const imagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(baseImage) } };
-  const graphicPart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(graphic) } };
-  const textPart = { text: prompt };
-  
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: { parts: [imagePart, graphicPart, textPart] },
-  });
-  
-  return response.text;
-}
-
-export async function generateGraphicVariation(originalPrompt: string, garment: string, targetArea: string): Promise<string> {
-  const variationPrompt = `Generate a creative variation of the following graphic concept: "${originalPrompt}". Offer a different composition, style, or take on the subject matter, but keep the core idea. The graphic MUST have a transparent background, be suitable for a ${garment}, and be optimized for the ${targetArea}.`;
-  
-  // This re-uses the generateGraphic logic but with a more creative prompt
-  return generateGraphic(variationPrompt, garment, targetArea);
-}
-
-
-export async function reversePromptFromImage(imageDataUrl: string): Promise<string> {
-  const prompt = "Analyze this image and describe it as a detailed, concise text prompt that could be used to generate a similar vector graphic. Focus on the subject, style, and key elements.";
-  
-  const imagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(imageDataUrl) } };
-  const textPart = { text: prompt };
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: { parts: [imagePart, textPart] },
-  });
-
-  return response.text.replace(/(\r\n|\n|\r)/gm, " ").replace(/"/g, ""); // Clean up response
-}
-
-export async function runPrintSafetyCheck(graphic: string): Promise<string> {
-  const prompt = `Analyze this graphic for print readiness on apparel. Are there any elements, such as lines or details, that are too thin or small to be printed clearly using standard screen printing methods? Provide a one-sentence summary of your findings. If issues are found, be specific (e.g., "The whiskers on the cat are too thin for printing.").`;
-  
-  const imagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(graphic) } };
-  const textPart = { text: prompt };
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: { parts: [imagePart, textPart] },
-  });
-
-  return response.text;
 }

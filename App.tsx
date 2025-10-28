@@ -1,105 +1,186 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import { Header } from './components/Header';
-import { ControlPanel } from './components/ControlPanel';
+import { ControlPanel, MockupConfig } from './components/ControlPanel';
 import { DisplayArea } from './components/DisplayArea';
 import { EditorPanel } from './components/EditorPanel';
+import type { DesignLayer } from './components/EditorPanel';
 import { 
   generateMockup, 
   generateGraphic, 
-  editImage,
-  checkContrast,
-  generateGraphicVariation,
-  reversePromptFromImage,
-  runPrintSafetyCheck
+  renderRealisticComposite,
+  parseEasyPrompt,
 } from './services/geminiService';
-import { 
-  GARMENT_CATEGORIES, 
-  DESIGN_STYLE_CATEGORIES, 
-  MATERIALS_BY_GARMENT_TYPE, 
-  GARMENT_COLORS, 
-  TARGET_AREAS,
-  FINISH_SIMULATIONS,
-  StyleOption, 
-  AspectRatioOption 
-} from './constants';
+import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, MATERIALS_BY_GARMENT_TYPE, FONT_OPTIONS, VIEWS } from './constants';
 
 type View = 'generator' | 'editor';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('generator');
-  const [selectedCategory, setSelectedCategory] = useState<string>(GARMENT_CATEGORIES[0].name);
-  const [selectedGarment, setSelectedGarment] = useState<string>(GARMENT_CATEGORIES[0].items[0]);
-  const [selectedDesignStyle, setSelectedDesignStyle] = useState<string>(DESIGN_STYLE_CATEGORIES[0].items[0]);
-  const [selectedColor, setSelectedColor] = useState<string>(GARMENT_COLORS[0]);
-  const [selectedMaterial, setSelectedMaterial] = useState<string>('');
-  const [selectedStyle, setSelectedStyle] = useState<StyleOption>('Photorealistic Mockup');
-  const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatioOption>('1:1');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [graphic, setGraphic] = useState<string | null>(null);
-  const [graphicPrompt, setGraphicPrompt] = useState<string>('');
+  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  const [finalRenderedImage, setFinalRenderedImage] = useState<string | null>(null);
 
-  // Graphic transformations
-  const [graphicPosition, setGraphicPosition] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.25 });
-  const [graphicSize, setGraphicSize] = useState<number>(0.3);
-  const [graphicRotation, setGraphicRotation] = useState<number>(0);
-  const [graphicFlip, setGraphicFlip] = useState<{ horizontal: boolean, vertical: boolean }>({ horizontal: false, vertical: false });
+  // --- New Layer-Based State Management for Editor ---
+  const [layers, setLayers] = useState<DesignLayer[]>([]);
+  const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
 
-  // New Advanced AI Features State
-  const [targetArea, setTargetArea] = useState<string>(TARGET_AREAS[0]);
-  const [finishSimulation, setFinishSimulation] = useState<string>(FINISH_SIMULATIONS[0]);
-  const [smartDisplacement, setSmartDisplacement] = useState<boolean>(false);
+  // --- New Generator State ---
+  const [config, setConfig] = useState<MockupConfig>({
+    easyPrompt: '',
+    selectedCategory: GARMENT_CATEGORIES[0].name,
+    selectedGarment: GARMENT_CATEGORIES[0].items[0],
+    selectedDesignStyle: DESIGN_STYLE_CATEGORIES[0].items[0],
+    selectedColor: '#000000',
+    selectedMaterial: MATERIALS_BY_GARMENT_TYPE[GARMENT_CATEGORIES[0].name]?.[0] || '',
+    selectedStyle: 'Photorealistic Mockup',
+    selectedViews: ['Front'],
+    aiApparelPrompt: '',
+    useAiApparel: false,
+    aiModelPrompt: '',
+    aiScenePrompt: '',
+    useAiModelScene: false,
+  });
 
+  const [presets, setPresets] = useState<Record<string, MockupConfig>>({});
 
-  const garmentItems = useMemo(() => {
-    const category = GARMENT_CATEGORIES.find(cat => cat.name === selectedCategory);
-    return category ? category.items : [];
-  }, [selectedCategory]);
-
-  const materialOptions = useMemo(() => {
-    return MATERIALS_BY_GARMENT_TYPE[selectedCategory] || [];
-  }, [selectedCategory]);
-
+  // Load presets from localStorage on initial render
   useEffect(() => {
-    if (materialOptions.length > 0 && !materialOptions.includes(selectedMaterial)) {
-      setSelectedMaterial(materialOptions[0]);
-    } else if (materialOptions.length === 0) {
-      setSelectedMaterial('');
+    try {
+      const savedPresets = localStorage.getItem('mockupPresets');
+      if (savedPresets) {
+        setPresets(JSON.parse(savedPresets));
+      }
+    } catch (error) {
+      console.error("Failed to load presets from localStorage", error);
     }
-  }, [materialOptions, selectedMaterial]);
-
-
-  const handleCategoryChange = useCallback((category: string) => {
-    setSelectedCategory(category);
-    const newItems = GARMENT_CATEGORIES.find(cat => cat.name === category)?.items || [];
-    setSelectedGarment(newItems[0] || '');
   }, []);
+
+  // --- Layer Manipulation Handlers ---
+  const addLayer = useCallback((layer: Partial<DesignLayer>) => {
+    const newLayer: DesignLayer = {
+      id: Date.now().toString(),
+      type: 'image',
+      content: '',
+      position: { x: 0.5, y: 0.25 },
+      size: { width: 0.3, height: 0.3 },
+      rotation: 0,
+      opacity: 1,
+      visible: true,
+      ...layer,
+    };
+    setLayers(prev => [...prev, newLayer]);
+    setActiveLayerId(newLayer.id);
+  }, []);
+
+  const updateLayer = useCallback((id: string, updates: Partial<DesignLayer>) => {
+    setLayers(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+  }, []);
+
+  const deleteLayer = useCallback((id: string) => {
+    setLayers(prev => prev.filter(l => l.id !== id));
+    if (activeLayerId === id) {
+      setActiveLayerId(null);
+    }
+  }, [activeLayerId]);
+
+  const reorderLayer = useCallback((fromIndex: number, toIndex: number) => {
+    setLayers(prev => {
+      const result = Array.from(prev);
+      const [removed] = result.splice(fromIndex, 1);
+      result.splice(toIndex, 0, removed);
+      return result;
+    });
+  }, []);
+
+  const handleEasyPromptParse = useCallback(async () => {
+    if (!config.easyPrompt) return;
+    const toastId = toast.loading('AI is interpreting your request...');
+    try {
+      const parsedConfig = await parseEasyPrompt(config.easyPrompt);
+      setConfig(prev => ({ ...prev, ...parsedConfig }));
+      toast.success('Settings have been auto-filled!', { id: toastId });
+    } catch (e) {
+      const error = e as Error;
+      toast.error(error.message, { id: toastId });
+    }
+  }, [config.easyPrompt]);
+  
+  const handleInspireMe = useCallback(() => {
+    const randomCategory = GARMENT_CATEGORIES[Math.floor(Math.random() * GARMENT_CATEGORIES.length)];
+    const randomGarment = randomCategory.items[Math.floor(Math.random() * randomCategory.items.length)];
+    const randomDesignCategory = DESIGN_STYLE_CATEGORIES[Math.floor(Math.random() * DESIGN_STYLE_CATEGORIES.length)];
+    const randomDesignStyle = randomDesignCategory.items[Math.floor(Math.random() * randomDesignCategory.items.length)];
+    const randomColor = GARMENT_COLORS[Math.floor(Math.random() * GARMENT_COLORS.length)].match(/#([0-9a-fA-F]{6})/)?.[0] || '#000000';
+    const randomMaterial = MATERIALS_BY_GARMENT_TYPE[randomCategory.name]?.[0] || '';
+
+    setConfig(prev => ({
+      ...prev,
+      selectedCategory: randomCategory.name,
+      selectedGarment: randomGarment,
+      selectedDesignStyle: randomDesignStyle,
+      selectedColor: randomColor,
+      selectedMaterial: randomMaterial,
+    }));
+    toast.success("Feeling inspired! ✨");
+  }, []);
+
+  const handleSavePreset = useCallback(() => {
+    const name = prompt("Enter a name for your preset:");
+    if (name) {
+      const newPresets = { ...presets, [name]: config };
+      setPresets(newPresets);
+      localStorage.setItem('mockupPresets', JSON.stringify(newPresets));
+      toast.success(`Preset "${name}" saved!`);
+    }
+  }, [config, presets]);
+
+  const handleLoadPreset = useCallback((name: string) => {
+    if (presets[name]) {
+      setConfig(presets[name]);
+      toast.success(`Preset "${name}" loaded!`);
+    }
+  }, [presets]);
+
+  const handleDeletePreset = useCallback((name: string) => {
+    if (window.confirm(`Are you sure you want to delete the preset "${name}"?`)) {
+      const newPresets = { ...presets };
+      delete newPresets[name];
+      setPresets(newPresets);
+      localStorage.setItem('mockupPresets', JSON.stringify(newPresets));
+      toast.success(`Preset "${name}" deleted.`);
+    }
+  }, [presets]);
+
 
   const handleGenerateMockup = useCallback(async () => {
     setIsLoading(true);
-    const promise = generateMockup(
-      selectedGarment, 
-      selectedStyle, 
-      selectedAspectRatio, 
-      selectedDesignStyle,
-      selectedColor,
-      selectedMaterial
+    setFinalRenderedImage(null);
+    setGeneratedImages([]);
+
+    if (config.selectedViews.length === 0) {
+      toast.error("Please select at least one view to generate.");
+      setIsLoading(false);
+      return;
+    }
+
+    const promise = Promise.all(
+      config.selectedViews.map(view => generateMockup(config, view))
     );
 
     toast.promise(promise, {
-      loading: 'Generating your masterpiece...',
-      success: (imageDataUrl) => {
-        setGeneratedImage(imageDataUrl);
-        setGraphic(null);
+      loading: `Generating ${config.selectedViews.length} view(s)...`,
+      success: (imageDataUrls) => {
+        setGeneratedImages(imageDataUrls);
+        setLayers([]);
         setView('editor');
-        return 'Mockup generated successfully!';
+        return 'Mockup(s) generated successfully!';
       },
       error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
     });
     
     promise.catch(() => {}).finally(() => setIsLoading(false));
-  }, [selectedGarment, selectedStyle, selectedAspectRatio, selectedDesignStyle, selectedColor, selectedMaterial]);
+  }, [config]);
   
   const handleGenerateGraphic = useCallback(async (prompt: string) => {
     if (!prompt) {
@@ -108,144 +189,126 @@ const App: React.FC = () => {
     }
     
     setIsLoading(true);
-    setGraphicPrompt(prompt); // Save the prompt
-    const promise = generateGraphic(prompt, selectedGarment, targetArea);
+    const promise = generateGraphic(prompt, config.useAiApparel ? config.aiApparelPrompt : config.selectedGarment, 'Center Chest');
     
     toast.promise(promise, {
       loading: 'Creating your custom graphic...',
       success: (graphicDataUrl) => {
-        setGraphic(graphicDataUrl);
-        // Reset all graphic transformations
-        setGraphicPosition({ x: 0.5, y: 0.25 }); 
-        setGraphicSize(0.3);
-        setGraphicRotation(0);
-        setGraphicFlip({ horizontal: false, vertical: false });
+        addLayer({ type: 'image', content: graphicDataUrl });
         return 'Custom graphic created!';
       },
       error: (err) => err instanceof Error ? err.message : 'An error occurred creating the graphic.',
     });
 
     promise.catch(() => {}).finally(() => setIsLoading(false));
-  }, [selectedGarment, targetArea]);
+  }, [config, addLayer]);
 
-  const handleEditImage = useCallback(async (prompt: string) => {
-    if (!prompt) {
-      toast.error("Please enter a prompt to edit the image.");
+
+  const handleRenderRealistic = useCallback(async () => {
+    const baseImage = generatedImages[0];
+    if (!baseImage || layers.length === 0) {
+      toast.error("Please add a design to the mockup before rendering.");
       return;
     }
-    if (!generatedImage) {
-      toast.error("Please generate a mockup first before editing.");
-      return;
-    }
-    setIsLoading(true);
     
+    setIsLoading(true);
     const promise = (async () => {
-      let imageToEdit = generatedImage;
-      if (graphic) {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          if (!ctx) throw new Error("Could not get canvas context");
+      // 1. Flatten layers onto a canvas
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error("Could not create canvas context");
 
-          const baseImg = new Image();
-          baseImg.src = generatedImage;
-          await new Promise(resolve => { baseImg.onload = resolve; });
-          
-          canvas.width = baseImg.width;
-          canvas.height = baseImg.height;
-          ctx.drawImage(baseImg, 0, 0);
+      const baseImg = new Image();
+      baseImg.src = baseImage;
+      await new Promise((resolve, reject) => {
+        baseImg.onload = resolve;
+        baseImg.onerror = reject;
+      });
 
-          const graphicImg = new Image();
-          graphicImg.src = graphic;
-          await new Promise(resolve => { graphicImg.onload = resolve; });
-          
-          const targetWidth = canvas.width * graphicSize;
-          const targetHeight = (graphicImg.height / graphicImg.width) * targetWidth;
-          const targetX = (graphicPosition.x * canvas.width) - (targetWidth / 2);
-          const targetY = (graphicPosition.y * canvas.height) - (targetHeight / 2);
-          
-          ctx.save();
-          ctx.translate(targetX + targetWidth / 2, targetY + targetHeight / 2);
-          ctx.rotate(graphicRotation * Math.PI / 180);
-          ctx.scale(graphicFlip.horizontal ? -1 : 1, graphicFlip.vertical ? -1 : 1);
-          ctx.drawImage(graphicImg, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
-          ctx.restore();
+      canvas.width = baseImg.naturalWidth;
+      canvas.height = baseImg.naturalHeight;
+      
+      const renderLayers = [...layers];
 
-          imageToEdit = canvas.toDataURL('image/png');
+      for (const layer of renderLayers) {
+        if (!layer.visible) continue;
+        
+        ctx.save();
+        ctx.globalAlpha = layer.opacity;
+
+        const targetWidth = canvas.width * layer.size.width;
+        
+        if (layer.type === 'image') {
+            const graphicImg = new Image();
+            graphicImg.src = layer.content;
+            await new Promise((resolve, reject) => {
+                graphicImg.onload = resolve;
+                graphicImg.onerror = reject;
+            });
+            
+            const aspectRatio = graphicImg.naturalWidth / graphicImg.naturalHeight;
+            const targetHeight = targetWidth / aspectRatio;
+            const targetX = (layer.position.x * canvas.width) - (targetWidth / 2);
+            const targetY = (layer.position.y * canvas.height) - (targetHeight / 2);
+
+            ctx.translate(targetX + targetWidth / 2, targetY + targetHeight / 2);
+            ctx.rotate(layer.rotation * Math.PI / 180);
+            ctx.drawImage(graphicImg, -targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+
+        } else if (layer.type === 'text') {
+            const fontSize = (layer.fontSize || 24) * (canvas.width / 1000);
+            ctx.font = `${layer.fontWeight || 'normal'} ${fontSize}px ${layer.fontFamily || 'Arial'}`;
+            ctx.fillStyle = layer.color || '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            const targetX = (layer.position.x * canvas.width);
+            const targetY = (layer.position.y * canvas.height);
+            
+            ctx.translate(targetX, targetY);
+            ctx.rotate(layer.rotation * Math.PI / 180);
+            ctx.fillText(layer.content, 0, 0);
+        } else if (layer.type === 'shape') {
+            const targetHeight = canvas.height * layer.size.height;
+            const targetX = (layer.position.x * canvas.width) - (targetWidth / 2);
+            const targetY = (layer.position.y * canvas.height) - (targetHeight / 2);
+            
+            ctx.fillStyle = layer.fill || '#FFFFFF';
+            ctx.translate(targetX + targetWidth/2, targetY + targetHeight/2);
+            ctx.rotate(layer.rotation * Math.PI / 180);
+            
+            if (layer.content === 'circle') {
+                ctx.beginPath();
+                ctx.ellipse(0, 0, targetWidth / 2, targetHeight / 2, 0, 0, 2 * Math.PI);
+                ctx.fill();
+            } else { // rectangle
+                ctx.fillRect(-targetWidth/2, -targetHeight/2, targetWidth, targetHeight);
+            }
+        }
+        
+        ctx.restore();
       }
 
-      return await editImage(imageToEdit, prompt);
+      const compositeGraphicUrl = canvas.toDataURL('image/png');
+
+      return renderRealisticComposite(baseImage, compositeGraphicUrl);
     })();
 
     toast.promise(promise, {
-      loading: 'Applying your edits...',
-      success: (editedImageDataUrl) => {
-        setGeneratedImage(editedImageDataUrl);
-        setGraphic(null); // Clear graphic after merging it into the base image
-        return 'Image edited successfully!';
-      },
-      error: (err) => err instanceof Error ? err.message : 'An unknown error occurred while editing the image.',
-    });
-
-    promise.catch(() => {}).finally(() => setIsLoading(false));
-  }, [generatedImage, graphic, graphicPosition, graphicSize, graphicRotation, graphicFlip]);
-  
-  // --- REAL HANDLERS FOR ADVANCED AI FEATURES ---
-  
-  const handleCheckContrast = useCallback(() => {
-    if (!graphic || !generatedImage) return;
-    const promise = checkContrast(generatedImage, graphic, selectedColor).then(analysis => {
-      toast.info(analysis, { duration: 10000 });
-      return analysis;
-    });
-    toast.promise(promise, {
-        loading: 'AI is checking color contrast...',
-        success: 'Contrast analysis complete!',
-        error: (err) => err instanceof Error ? err.message : 'An error occurred.',
-    });
-  }, [generatedImage, graphic, selectedColor]);
-
-  const handleGenerateVariation = useCallback(() => {
-    if (!graphicPrompt) {
-      toast.error('Generate a graphic first to create a variation.');
-      return;
-    }
-    const promise = generateGraphicVariation(graphicPrompt, selectedGarment, targetArea);
-    toast.promise(promise, {
-        loading: 'Generating a new variation...',
-        success: (newGraphicUrl) => {
-            setGraphic(newGraphicUrl);
-            return 'New graphic variation created!';
+        loading: 'AI is rendering a hyper-realistic mockup...',
+        success: (finalImage) => {
+            setFinalRenderedImage(finalImage);
+            setGeneratedImages([finalImage]);
+            setLayers([]);
+            return 'Realistic mockup rendered successfully!';
         },
-        error: (err) => err instanceof Error ? err.message : 'An error occurred.',
+        error: (err) => err instanceof Error ? err.message : 'An error occurred during rendering.',
     });
-  }, [graphicPrompt, selectedGarment, targetArea]);
-  
-  const handleReversePrompt = useCallback((imageDataUrl: string) => {
-    const promise = reversePromptFromImage(imageDataUrl).then(prompt => {
-      setGraphicPrompt(prompt);
-      toast.success('Prompt generated from image!');
-      return prompt;
-    });
-    toast.promise(promise, {
-      loading: 'AI is analyzing your image...',
-      success: 'Prompt generated successfully!',
-      error: (err) => err instanceof Error ? err.message : 'An error occurred.',
-    });
-  }, []);
-  
-  const handlePrintSafetyCheck = useCallback(() => {
-    if (!graphic) return;
-    const promise = runPrintSafetyCheck(graphic).then(analysis => {
-      toast.info(analysis, { duration: 10000 });
-      return analysis;
-    });
-    toast.promise(promise, {
-      loading: 'AI is checking for print safety...',
-      success: 'Print safety check complete!',
-      error: (err) => err instanceof Error ? err.message : 'An error occurred.',
-    });
-  }, [graphic]);
+    
+    promise.catch(() => {}).finally(() => setIsLoading(false));
 
+  }, [generatedImages, layers]);
+  
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col">
       <Toaster position="top-right" richColors theme="dark" />
@@ -257,72 +320,49 @@ const App: React.FC = () => {
               <button onClick={() => setView('generator')} className={`py-2 px-4 text-sm font-medium ${view === 'generator' ? 'border-b-2 border-indigo-500 text-white' : 'text-gray-400 hover:text-white'}`}>
                 1. Mockup Generator
               </button>
-              <button onClick={() => setView('editor')} disabled={!generatedImage} className={`py-2 px-4 text-sm font-medium ${view === 'editor' ? 'border-b-2 border-indigo-500 text-white' : 'text-gray-400 hover:text-white'} disabled:opacity-50 disabled:cursor-not-allowed`}>
-                2. Graphic Editor
+              <button onClick={() => setView('editor')} disabled={generatedImages.length === 0} className={`py-2 px-4 text-sm font-medium ${view === 'editor' ? 'border-b-2 border-indigo-500 text-white' : 'text-gray-400 hover:text-white'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                2. Design Studio
               </button>
             </div>
             
             {view === 'generator' && (
               <ControlPanel
-                selectedCategory={selectedCategory}
-                onCategoryChange={handleCategoryChange}
-                garmentItems={garmentItems}
-                selectedGarment={selectedGarment}
-                onGarmentChange={setSelectedGarment}
-                selectedDesignStyle={selectedDesignStyle}
-                onDesignStyleChange={setSelectedDesignStyle}
-                selectedColor={selectedColor}
-                onColorChange={setSelectedColor}
-                materialOptions={materialOptions}
-                selectedMaterial={selectedMaterial}
-                onMaterialChange={setSelectedMaterial}
-                selectedStyle={selectedStyle}
-                onStyleChange={setSelectedStyle}
-                selectedAspectRatio={selectedAspectRatio}
-                onAspectRatioChange={setSelectedAspectRatio}
+                config={config}
+                setConfig={setConfig}
                 onGenerate={handleGenerateMockup}
+                onParseEasyPrompt={handleEasyPromptParse}
+                onInspireMe={handleInspireMe}
+                presets={presets}
+                onSavePreset={handleSavePreset}
+                onLoadPreset={handleLoadPreset}
+                onDeletePreset={handleDeletePreset}
                 isLoading={isLoading}
               />
             )}
-            {view === 'editor' && generatedImage && (
+            {view === 'editor' && generatedImages.length > 0 && (
                <EditorPanel
+                layers={layers}
+                activeLayerId={activeLayerId}
+                onAddLayer={addLayer}
+                onUpdateLayer={updateLayer}
+                onDeleteLayer={deleteLayer}
+                onReorderLayer={reorderLayer}
+                onSetActiveLayer={setActiveLayerId}
                 onGenerateGraphic={handleGenerateGraphic}
-                onEditImage={handleEditImage}
+                onRenderRealistic={handleRenderRealistic}
                 isLoading={isLoading}
-                hasGraphic={!!graphic}
-                graphicPrompt={graphicPrompt}
-                onGraphicPromptChange={setGraphicPrompt}
-                graphicRotation={graphicRotation}
-                onGraphicRotationChange={setGraphicRotation}
-                graphicFlip={graphicFlip}
-                onGraphicFlipChange={setGraphicFlip}
-                // Pass new state and handlers
-                targetArea={targetArea}
-                onTargetAreaChange={setTargetArea}
-                finishSimulation={finishSimulation}
-                onFinishSimulationChange={setFinishSimulation}
-                smartDisplacement={smartDisplacement}
-                onSmartDisplacementChange={setSmartDisplacement}
-                onCheckContrast={handleCheckContrast}
-                onGenerateVariation={handleGenerateVariation}
-                onReversePrompt={handleReversePrompt}
-                onPrintSafetyCheck={handlePrintSafetyCheck}
                />
             )}
           </div>
         </div>
         <div className="flex-grow lg:w-2/3 xl:w-3/4">
           <DisplayArea
-            generatedImage={generatedImage}
-            graphic={graphic}
-            graphicPosition={graphicPosition}
-            onGraphicPositionChange={setGraphicPosition}
-            graphicSize={graphicSize}
-            onGraphicSizeChange={setGraphicSize}
-            graphicRotation={graphicRotation}
-            graphicFlip={graphicFlip}
-            finishSimulation={finishSimulation}
-            smartDisplacement={smartDisplacement}
+            baseImages={generatedImages}
+            finalImage={finalRenderedImage}
+            layers={layers}
+            activeLayerId={activeLayerId}
+            onSetActiveLayer={setActiveLayerId}
+            onUpdateLayer={updateLayer}
           />
         </div>
       </main>

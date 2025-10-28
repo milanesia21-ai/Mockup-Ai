@@ -1,3 +1,5 @@
+import { MockupConfig as TMockupConfig } from './components/ControlPanel';
+export type MockupConfig = TMockupConfig;
 
 export interface GarmentCategory {
   name: string;
@@ -58,9 +60,7 @@ export const GARMENT_CATEGORIES: GarmentCategory[] = [
 export const STYLE_OPTIONS = ['Photorealistic Mockup', 'Technical Sketch Style'] as const;
 export type StyleOption = typeof STYLE_OPTIONS[number];
 
-export const ASPECT_RATIO_OPTIONS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
-export type AspectRatioOption = typeof ASPECT_RATIO_OPTIONS[number];
-
+export const VIEWS = ['Front', 'Back', 'Side', 'Close-Up'];
 
 export interface DesignStyleCategory {
   name: string;
@@ -156,44 +156,66 @@ export const MATERIALS_BY_GARMENT_TYPE: { [key: string]: string[] } = {
   'FOOTWEAR': ['Leather', 'Suede', 'Canvas', 'Knit Mesh', 'Rubber', 'Synthetic Leather'],
 };
 
-// New constants for Advanced AI Features
-export const TARGET_AREAS = ['Center Chest', 'Left Chest Pocket', 'Full Front', 'Upper Back (Yoke)', 'Center Back', 'Left Sleeve', 'Right Sleeve', 'Cap Front'];
-export const FINISH_SIMULATIONS = ['Standard Screen Print', 'High-Density Embroidery', 'Heavy Screen Print Ink', 'Distressed Vintage Print', 'Foil/Metallic Print'];
+// New constants for Text Tool
+export const FONT_OPTIONS = [
+    'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Verdana', 
+    'Georgia', 'Palatino', 'Garamond', 'Comic Sans MS', 'Impact', 
+    'Lucida Console', 'Tahoma', 'Trebuchet MS', 'Arial Black'
+];
 
-// --- PROMPTS ---
 
-export const PHOTOREALISTIC_PROMPT = `
-Create a high-end, photorealistic, e-commerce style mockup of a {{garment}}.
-The mockup must show a dual view: the front view on the left, and the back view on the right.
-The garment should be presented in a "ghost mannequin" style, as if laid flat, on a neutral light gray studio background (#E0E0E0) with a subtle floor shadow.
+// --- NEW DYNAMIC PROMPTS ---
 
-The garment's color is {{color}} and it is made of {{material}}. The visual texture, wrinkles, and drape must accurately represent this material.
-The overall design aesthetic is {{designStyle}}.
+export const EASY_PROMPT_PARSER = `
+You are an expert fashion assistant AI. Analyze the user's request and extract the key details for a mockup generation.
+User Request: "{{prompt}}"
 
-**CRITICAL INSTRUCTION:** The final image must be **purely visual**. It must **NOT** contain any text, labels, hangers, props, or human figures. The focus is solely on the garment.
+Based on the request, find the closest matching options from the lists below and return them in a valid JSON object.
+- Garment list: ${GARMENT_CATEGORIES.map(c => c.items).flat().join(', ')}
+- Design Style list: ${DESIGN_STYLE_CATEGORIES.map(c => c.items).flat().join(', ')}
+- Color: Infer the color and provide its HEX code.
+- Material list: ${Object.values(MATERIALS_BY_GARMENT_TYPE).flat().join(', ')}
+- Style list: 'Photorealistic Mockup', 'Technical Sketch Style'
+
+The JSON object must have keys: "selectedGarment", "selectedDesignStyle", "selectedColor", "selectedMaterial", "selectedStyle".
+If a detail is not mentioned, you can omit the key or leave its value empty.
+`;
+
+export const PHOTOREALISTIC_APPAREL_PROMPT = `
+Create a high-end, e-commerce style photorealistic mockup of a single garment.
+The garment is a {{garment}} in the color {{color}}, made of {{material}}. The visual texture, wrinkles, and drape must accurately represent this material.
+The design aesthetic is {{designStyle}}.
+The image must show the {{view}} of the garment, presented in a "ghost mannequin" or "flat lay" style.
+The background must be a neutral light gray studio background (#E0E0E0) with a subtle floor shadow.
+The final image must be purely visual. It must NOT contain any text, labels, hangers, props, or human figures.
+`;
+
+export const PHOTOREALISTIC_SCENE_PROMPT = `
+Create a high-end, photorealistic fashion photograph for an e-commerce campaign.
+The scene is: {{scene}}. The model is described as: {{model}}. The lighting should be professional and match the scene description.
+The model is wearing a {{garment}} in the color {{color}}, made of {{material}}. The design aesthetic is {{designStyle}}.
+The final image must showcase the {{view}} of the garment on the model, with the focus on the apparel.
+The image must be high-resolution and photorealistic. Do not add any text, logos, or watermarks.
 `;
 
 export const TECHNICAL_SKETCH_PROMPT = `
-Create a professional, clean, dual-view technical flat sketch of a {{garment}}.
-The sketch must only show the front view and the back view of the garment, side-by-side on a pure white background.
+Generate a 2D technical flat sketch of a single apparel item for a fashion tech pack.
 
-The garment's design style is {{designStyle}}.
-The entire sketch should be filled with the solid color {{color}}.
-Simulate the texture of {{material}} using a very subtle and clean vector pattern within the fill.
-The line work should be black with a consistent stroke weight. There should be no photorealistic shading or gradients.
+- Garment: {{garment}}
+- Color: The sketch should be filled with the flat color {{color}}.
+- Design Style: {{designStyle}}
+- View: {{view}}
 
-**CRITICAL INSTRUCTION:** The final image must be **100% visual**. It must **NOT** contain any text, letters, numbers, annotations, or callouts of any kind. The output should be only the garment drawing on a white background. This is a strict and absolute requirement.
+**CRITICAL RULES:**
+1.  The output MUST be a clean, 2D vector-style line drawing.
+2.  The background MUST be a pure, solid white (#FFFFFF).
+3.  **ABSOLUTELY NO TEXT.** Do not add any text, labels, annotations, measurements, or callouts. The image must be purely visual.
+4.  Do not include shadows, textures, wrinkles, or any photographic elements.
 `;
 
-export const FOOTWEAR_SKETCH_PROMPT = `
-Create a professional, 5-view technical flat sketch of a {{garment}}.
-The sketch must show the FRONT, BACK, LEFT SIDE, RIGHT SIDE, and SOLE views, all arranged logically on a single pure white background.
 
-The footwear's design style is {{designStyle}}.
-The entire sketch should be filled with the solid color {{color}}.
-Simulate the texture of {{material}} using a subtle and clean vector pattern within the fill.
-The line work should be black with a consistent stroke weight.
-
-**CRITICAL LABELING INSTRUCTION:** Place a clean, capitalized, sans-serif label directly below each of the 5 views. The labels must be exactly: "FRONT", "BACK", "LEFT SIDE", "RIGHT SIDE", and "SOLE".
-No other text, annotations, or human figures should be present in the final image.
-`;
+// --- DEPRECATED ---
+// Old prompts are kept for reference but are no longer used by the new system.
+export const AI_APPAREL_PROMPT = `DEPRECATED`;
+export const AI_SCENE_PROMPT = `DEPRECATED`;
+export const FOOTWEAR_SKETCH_PROMPT = `DEPRECATED`;
