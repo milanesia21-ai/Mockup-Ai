@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, MATERIALS_BY_GARMENT_TYPE, STYLE_OPTIONS, StyleOption, VIEWS } from '../constants';
 import { toast } from 'sonner';
 
@@ -9,6 +9,7 @@ export interface MockupConfig {
   selectedDesignStyle: string;
   selectedColor: string;
   selectedMaterial: string;
+  customMaterialTexture?: string;
   selectedStyle: StyleOption;
   selectedViews: string[];
   aiApparelPrompt: string;
@@ -107,6 +108,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onDeletePreset,
   isLoading,
 }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const presetSelectRef = useRef<HTMLSelectElement>(null);
+
   const handleConfigChange = (key: keyof MockupConfig, value: any) => {
     setConfig(prev => ({...prev, [key]: value}));
   };
@@ -135,6 +139,45 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const materialOptions = useMemo(() => {
     return MATERIALS_BY_GARMENT_TYPE[config.selectedCategory] || [];
   }, [config.selectedCategory]);
+
+  const handlePresetLoad = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const presetName = e.target.value;
+    if (presetName) {
+      onLoadPreset(presetName);
+      if (presetSelectRef.current) {
+        presetSelectRef.current.value = ''; // Reset dropdown to placeholder
+      }
+    }
+  };
+
+  const handleTextureUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleTextureFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (file.size > 4 * 1024 * 1024) { // Gemini has a 4MB limit for inline data
+          toast.error('File size must be less than 4MB.');
+          return;
+      }
+
+      try {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              const dataUrl = reader.result as string;
+              handleConfigChange('customMaterialTexture', dataUrl);
+              handleConfigChange('selectedMaterial', `Custom: ${file.name.substring(0, 20)}...`);
+              toast.success("Custom texture uploaded!");
+          };
+          reader.readAsDataURL(file);
+      } catch (error) {
+          toast.error('Failed to read the file.');
+          console.error("File read error:", error);
+      }
+      e.target.value = '';
+  };
 
   return (
     <div className="h-full flex flex-col space-y-4">
@@ -199,10 +242,35 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
              <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-300 mb-1">Material</label>
-                <select value={config.selectedMaterial} onChange={(e) => handleConfigChange('selectedMaterial', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500" disabled={materialOptions.length === 0}>
+                <select value={config.selectedMaterial} onChange={(e) => handleConfigChange('selectedMaterial', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500" disabled={materialOptions.length === 0 || !!config.customMaterialTexture}>
                     {materialOptions.map(item => <option key={item} value={item}>{item}</option>)}
                 </select>
-                <button onClick={() => toast.info('Custom texture uploads coming soon!')} className="text-xs text-indigo-400 hover:underline mt-1">Upload Custom Fabric Texture</button>
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleTextureFileChange}
+                    accept="image/png, image/jpeg, image/webp"
+                    className="hidden"
+                />
+                <button onClick={handleTextureUploadClick} className="text-xs text-indigo-400 hover:underline mt-1" disabled={config.selectedStyle === 'Technical Sketch Style'}>
+                   {config.selectedStyle === 'Technical Sketch Style' ? 'Custom Textures N/A for Sketches' : 'Upload Custom Fabric Texture'}
+                </button>
+                {config.customMaterialTexture && (
+                    <div className="mt-2 flex items-center gap-2 p-2 bg-gray-900/50 rounded-md">
+                        <img src={config.customMaterialTexture} alt="Custom texture preview" className="w-10 h-10 object-cover rounded"/>
+                        <p className="text-xs text-gray-300 flex-grow truncate">{config.selectedMaterial}</p>
+                        <button 
+                          onClick={() => {
+                            handleConfigChange('customMaterialTexture', undefined);
+                            handleConfigChange('selectedMaterial', materialOptions[0] || '');
+                          }} 
+                          className="text-red-500 hover:text-red-400 font-bold text-lg"
+                          title="Remove custom texture"
+                        >
+                          &times;
+                        </button>
+                    </div>
+                )}
             </div>
              <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-300 mb-1">Design Style</label>
@@ -235,7 +303,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         <div className="border-t border-gray-700 pt-4">
              <h3 className="text-lg font-semibold text-white mb-2">Presets</h3>
              <div className="flex gap-2">
-                <select onChange={(e) => onLoadPreset(e.target.value)} className="flex-grow bg-gray-700 border border-gray-600 rounded-md py-2 px-3" defaultValue="">
+                <select ref={presetSelectRef} onChange={handlePresetLoad} className="flex-grow bg-gray-700 border border-gray-600 rounded-md py-2 px-3" defaultValue="">
                     <option value="" disabled>Load Preset...</option>
                     {Object.keys(presets).map(name => <option key={name} value={name}>{name}</option>)}
                 </select>
@@ -245,8 +313,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div className="text-xs mt-2 space-y-1">
                     {Object.keys(presets).map(name => (
                         <div key={name} className="flex justify-between items-center bg-gray-900/50 p-1 rounded">
-                            <span>{name}</span>
-                            <button onClick={() => onDeletePreset(name)} className="text-red-500 hover:text-red-400">🗑️</button>
+                            <span className="truncate pr-2">{name}</span>
+                            <button onClick={() => onDeletePreset(name)} className="text-red-500 hover:text-red-400 flex-shrink-0">🗑️</button>
                         </div>
                     ))}
                 </div>

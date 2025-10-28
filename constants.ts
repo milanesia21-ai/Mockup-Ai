@@ -199,18 +199,17 @@ The image must be high-resolution and photorealistic. Do not add any text, logos
 `;
 
 export const TECHNICAL_SKETCH_PROMPT = `
-Generate a 2D technical flat sketch of a single apparel item for a fashion tech pack.
+Generate a clean, 2D technical flat sketch of a single apparel item for a fashion tech pack.
 
-- Garment: {{garment}}
-- Color: The sketch should be filled with the flat color {{color}}.
+- Garment: A {{garment}}
 - Design Style: {{designStyle}}
-- View: {{view}}
+- View: Show the {{view}} view.
 
 **CRITICAL RULES:**
-1.  The output MUST be a clean, 2D vector-style line drawing.
+1.  The output MUST be a clean, 2D vector-style line drawing with black outlines.
 2.  The background MUST be a pure, solid white (#FFFFFF).
 3.  **ABSOLUTELY NO TEXT.** Do not add any text, labels, annotations, measurements, or callouts. The image must be purely visual.
-4.  Do not include shadows, textures, wrinkles, or any photographic elements.
+4.  Do not include shadows, textures, wrinkles, colors, or any photographic elements. It must be a simple line drawing.
 `;
 
 

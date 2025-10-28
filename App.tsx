@@ -33,6 +33,7 @@ const App: React.FC = () => {
     selectedDesignStyle: DESIGN_STYLE_CATEGORIES[0].items[0],
     selectedColor: '#000000',
     selectedMaterial: MATERIALS_BY_GARMENT_TYPE[GARMENT_CATEGORIES[0].name]?.[0] || '',
+    customMaterialTexture: undefined,
     selectedStyle: 'Photorealistic Mockup',
     selectedViews: ['Front'],
     aiApparelPrompt: '',
@@ -98,7 +99,20 @@ const App: React.FC = () => {
     const toastId = toast.loading('AI is interpreting your request...');
     try {
       const parsedConfig = await parseEasyPrompt(config.easyPrompt);
-      setConfig(prev => ({ ...prev, ...parsedConfig }));
+      
+      setConfig(prev => {
+        const newConfig = { ...prev, ...parsedConfig };
+
+        // If the garment was parsed, find its category and update that too for UI consistency.
+        if (parsedConfig.selectedGarment) {
+          const category = GARMENT_CATEGORIES.find(cat => cat.items.includes(parsedConfig.selectedGarment!));
+          if (category) {
+            newConfig.selectedCategory = category.name;
+          }
+        }
+        return newConfig;
+      });
+
       toast.success('Settings have been auto-filled!', { id: toastId });
     } catch (e) {
       const error = e as Error;
@@ -121,6 +135,7 @@ const App: React.FC = () => {
       selectedDesignStyle: randomDesignStyle,
       selectedColor: randomColor,
       selectedMaterial: randomMaterial,
+      customMaterialTexture: undefined, // Reset custom texture on inspire
     }));
     toast.success("Feeling inspired! ✨");
   }, []);
@@ -130,8 +145,13 @@ const App: React.FC = () => {
     if (name) {
       const newPresets = { ...presets, [name]: config };
       setPresets(newPresets);
-      localStorage.setItem('mockupPresets', JSON.stringify(newPresets));
-      toast.success(`Preset "${name}" saved!`);
+       try {
+        localStorage.setItem('mockupPresets', JSON.stringify(newPresets));
+        toast.success(`Preset "${name}" saved!`);
+       } catch (error) {
+        console.error("Failed to save presets:", error);
+        toast.error("Could not save preset. Storage may be full.");
+       }
     }
   }, [config, presets]);
 
@@ -147,8 +167,13 @@ const App: React.FC = () => {
       const newPresets = { ...presets };
       delete newPresets[name];
       setPresets(newPresets);
-      localStorage.setItem('mockupPresets', JSON.stringify(newPresets));
-      toast.success(`Preset "${name}" deleted.`);
+       try {
+        localStorage.setItem('mockupPresets', JSON.stringify(newPresets));
+        toast.success(`Preset "${name}" deleted.`);
+       } catch (error) {
+        console.error("Failed to delete preset:", error);
+        toast.error("Could not delete preset. Storage may be full.");
+       }
     }
   }, [presets]);
 
