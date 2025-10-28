@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { DesignLayer } from './EditorPanel';
 
@@ -27,7 +28,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
     height: 0,
   });
   
-  const aspectRatio = useRef(1);
+  const [aspectRatio, setAspectRatio] = useState<number>(1);
 
   useLayoutEffect(() => {
     let isMounted = true;
@@ -36,15 +37,14 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
         img.src = layer.content;
         img.onload = () => {
             if (isMounted && img.naturalWidth > 0 && img.naturalHeight > 0) {
-                aspectRatio.current = img.naturalWidth / img.naturalHeight;
-                updateElementTransform(); // Re-run transform with correct aspect ratio
+                setAspectRatio(img.naturalWidth / img.naturalHeight);
             }
         };
-    } else if (layer.type === 'shape' && layer.size.height > 0) {
-        aspectRatio.current = layer.size.width / layer.size.height;
+    } else if (layer.type === 'shape' && layer.size.width > 0 && layer.size.height > 0) {
+        setAspectRatio(layer.size.width / layer.size.height);
     }
     return () => { isMounted = false; }
-  }, [layer.content, layer.type, layer.size]);
+  }, [layer.content, layer.type, layer.size.width, layer.size.height]);
   
   const updateElementTransform = useCallback(() => {
     if (!graphicRef.current || !containerRef.current) return;
@@ -53,7 +53,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
     const graphic = graphicRef.current;
     
     const width = containerRect.width * layer.size.width;
-    const height = aspectRatio.current > 0 ? width / aspectRatio.current : width;
+    const height = width / aspectRatio;
     const x = layer.position.x * containerRect.width - width / 2;
     const y = layer.position.y * containerRect.height - height / 2;
 
@@ -65,7 +65,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
     graphic.style.opacity = `${layer.opacity}`;
     graphic.style.display = layer.visible ? 'block' : 'none';
 
-  }, [containerRef, layer]);
+  }, [containerRef, layer, aspectRatio]);
   
   useLayoutEffect(() => {
     updateElementTransform();
@@ -118,7 +118,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
         graphic.style.top = `${newY}px`;
       } else if (isInteracting === 'resizing') {
         const newWidth = interactionStart.current.width + dx;
-        const newHeight = aspectRatio.current > 0 ? newWidth / aspectRatio.current : newWidth;
+        const newHeight = newWidth / aspectRatio;
         
         if (interactionStart.current.elementX + newWidth > containerRect.width ||
             interactionStart.current.elementY + newHeight > containerRect.height) {
@@ -162,16 +162,17 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isInteracting, onUpdateLayer, containerRef, layer.id]);
+  }, [isInteracting, onUpdateLayer, containerRef, layer.id, aspectRatio]);
 
   const borderStyle = isActive ? 'border-2 border-dashed border-indigo-400' : 'border-2 border-transparent';
+  const interactionClass = isInteracting ? 'scale-105 shadow-2xl' : '';
 
   return (
     <div
       ref={graphicRef}
       onMouseDown={(e) => handleInteractionStart(e, 'dragging')}
-      className={`absolute cursor-move select-none p-1 box-content ${borderStyle}`}
-      style={{ touchAction: 'none' }}
+      className={`absolute cursor-move select-none p-1 box-content transition-all duration-150 ${borderStyle} ${interactionClass}`}
+      style={{ touchAction: 'none', zIndex: isActive ? 20 : 10 }}
     >
         {layer.type === 'image' && (
             <img

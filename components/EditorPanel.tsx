@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import { FONT_OPTIONS } from '../constants';
+import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS } from '../constants';
 import { generateInspirationPrompt } from '../services/geminiService';
 
 export interface DesignLayer {
@@ -29,14 +30,14 @@ interface EditorPanelProps {
     onDeleteLayer: (id: string) => void;
     onReorderLayer: (from: number, to: number) => void;
     onSetActiveLayer: (id: string | null) => void;
-    onGenerateGraphic: (prompt: string, color: string) => void;
+    onGenerateGraphic: (prompt: string, color: string, placement: string) => void;
     onModifyGarment: (prompt: string) => void;
     onRenderRealistic: () => void;
     isLoading: boolean;
     garmentDescription: string;
 }
 
-type EditorTab = 'layers' | 'text' | 'elements' | 'uploads' | 'generate';
+type EditorTab = 'layers' | 'generate' | 'text' | 'elements' | 'uploads';
 
 const MicIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
@@ -88,6 +89,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const [activeTab, setActiveTab] = useState<EditorTab>('generate');
     const [graphicPrompt, setGraphicPrompt] = useState('');
     const [graphicColor, setGraphicColor] = useState('#FFFFFF');
+    const [graphicPlacement, setGraphicPlacement] = useState<string>('');
     const [modificationPrompt, setModificationPrompt] = useState('');
     const [isInspiring, setIsInspiring] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
@@ -96,6 +98,22 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const dragOverItem = useRef<number | null>(null);
     
     const activeLayer = layers.find(l => l.id === activeLayerId);
+
+    const placementOptions = useMemo(() => {
+        const garmentDescLower = garmentDescription.toLowerCase();
+        const garmentKey = Object.keys(GARMENT_PART_PLACEMENTS)
+            .sort((a, b) => b.length - a.length)
+            .find(key => garmentDescLower.includes(key.toLowerCase()));
+        
+        return garmentKey ? GARMENT_PART_PLACEMENTS[garmentKey] : [];
+    }, [garmentDescription]);
+    
+    useEffect(() => {
+        if (placementOptions.length > 0 && !placementOptions.includes(graphicPlacement)) {
+            setGraphicPlacement(placementOptions[0]);
+        }
+    }, [placementOptions, graphicPlacement]);
+
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -214,6 +232,17 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                             disabled={isLoading || isInspiring}
                         />
                          <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Placement</label>
+                            <select
+                                value={graphicPlacement}
+                                onChange={(e) => setGraphicPlacement(e.target.value)}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500"
+                                disabled={isLoading || placementOptions.length === 0}
+                            >
+                                {placementOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            </select>
+                        </div>
+                         <div className="mt-4">
                             <label className="block text-sm font-medium text-gray-300 mb-1">Graphic Color</label>
                             <input
                                 type="color"
@@ -223,8 +252,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                             />
                         </div>
                          <button
-                            onClick={() => onGenerateGraphic(graphicPrompt, graphicColor)}
-                            disabled={isLoading || isInspiring || !graphicPrompt}
+                            onClick={() => onGenerateGraphic(graphicPrompt, graphicColor, graphicPlacement)}
+                            disabled={isLoading || isInspiring || !graphicPrompt || !graphicPlacement}
                             className="w-full mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             {isLoading ? <LoadingSpinner /> : 'Generate & Add Graphic'}
@@ -310,36 +339,62 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
             case 'layers':
             default:
                 return (
-                    <div className="space-y-2">
-                        <h3 className="text-lg font-semibold mb-2 text-white">Layers</h3>
-                        {layers.map((layer, index) => (
-                            <div 
-                                key={layer.id}
-                                draggable
-                                onDragStart={() => dragItem.current = index}
-                                onDragEnter={() => dragOverItem.current = index}
-                                onDragEnd={handleDragEnd}
-                                onDragOver={(e) => e.preventDefault()}
-                                onClick={() => onSetActiveLayer(layer.id)} 
-                                className={`flex items-center p-2 rounded-md cursor-pointer transition-all ${activeLayerId === layer.id ? 'bg-indigo-500/30 ring-2 ring-indigo-500' : 'bg-gray-700'}`}
-                            >
-                                <div className="flex-grow truncate pr-2 flex items-center">
-                                    <span className="cursor-grab pr-2">⠿</span>
-                                    {layer.type === 'image' && <img src={layer.content} className="w-8 h-8 object-contain inline mr-2 bg-white/10 rounded"/>}
-                                    {layer.type === 'text' && <span className="text-xl font-bold mr-2 w-8 text-center">T</span>}
-                                    {layer.type === 'shape' && (
-                                        <div className="w-8 h-8 mr-2 flex items-center justify-center">
-                                            <div style={{ backgroundColor: layer.fill }} className={`w-5 h-5 ${layer.content === 'circle' ? 'rounded-full' : ''}`}></div>
-                                        </div>
-                                    )}
-                                    <span className="truncate">{layer.content.startsWith('data:') ? `Image Layer ${index + 1}` : layer.content}</span>
-                                </div>
-                                <div className="flex gap-2">
-                                  <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, {visible: !layer.visible})}}>{layer.visible ? '👁️' : '🙈'}</button>
-                                  <button onClick={(e) => { e.stopPropagation(); onDeleteLayer(layer.id)}}>🗑️</button>
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4 text-white">Layers</h3>
+                        {layers.length > 0 && (
+                          <div className="space-y-2 mb-4">
+                              {layers.map((layer, index) => (
+                                  <div 
+                                      key={layer.id}
+                                      draggable
+                                      onDragStart={() => dragItem.current = index}
+                                      onDragEnter={() => dragOverItem.current = index}
+                                      onDragEnd={handleDragEnd}
+                                      onDragOver={(e) => e.preventDefault()}
+                                      onClick={() => onSetActiveLayer(layer.id)} 
+                                      className={`flex items-center p-2 rounded-md cursor-pointer transition-all ${activeLayerId === layer.id ? 'bg-indigo-500/30 ring-2 ring-indigo-500' : 'bg-gray-700'}`}
+                                      style={{
+                                          border: dragOverItem.current === index ? '2px dashed #6366f1' : 'none'
+                                      }}
+                                  >
+                                      <div className="flex-grow truncate pr-2 flex items-center">
+                                          <span className="cursor-grab pr-2">⠿</span>
+                                          {layer.type === 'image' && <img src={layer.content} className="w-8 h-8 object-contain inline mr-2 bg-white/10 rounded"/>}
+                                          {layer.type === 'text' && <span className="text-xl font-bold mr-2 w-8 text-center">T</span>}
+                                          {layer.type === 'shape' && (
+                                              <div className="w-8 h-8 mr-2 flex items-center justify-center">
+                                                  <div style={{ backgroundColor: layer.fill }} className={`w-5 h-5 ${layer.content === 'circle' ? 'rounded-full' : ''}`}></div>
+                                              </div>
+                                          )}
+                                          <span className="truncate">{layer.content.startsWith('data:') ? `Image Layer ${index + 1}` : layer.content}</span>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, {visible: !layer.visible})}}>{layer.visible ? '👁️' : '🙈'}</button>
+                                        <button onClick={(e) => { e.stopPropagation(); onDeleteLayer(layer.id)}}>🗑️</button>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+                        )}
+
+                        {activeLayer && (
+                            <div className="border-t border-gray-700 pt-4">
+                                <h4 className="text-md font-semibold mb-2 text-white">Layer Properties</h4>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Opacity</label>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.01"
+                                        value={activeLayer.opacity}
+                                        onChange={(e) => onUpdateLayer(activeLayer.id, { opacity: parseFloat(e.target.value) })}
+                                        className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                                    />
                                 </div>
                             </div>
-                        ))}
+                        )}
+                        
                         {layers.length === 0 && <p className="text-gray-500 text-sm text-center py-4">Your design is empty. Add a graphic, text, or elements.</p>}
                     </div>
                 );

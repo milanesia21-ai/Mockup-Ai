@@ -3,6 +3,7 @@ import React, { useRef } from 'react';
 import { DraggableGraphic } from './DraggableGraphic';
 import { DesignLayer } from './EditorPanel';
 import { GeneratedImage } from '../App';
+import { GroundingSource } from '../services/geminiService';
 
 
 interface DisplayAreaProps {
@@ -12,6 +13,7 @@ interface DisplayAreaProps {
   activeLayerId: string | null;
   onSetActiveLayer: (id: string | null) => void;
   onUpdateLayer: (id: string, updates: Partial<DesignLayer>) => void;
+  groundingSources: GroundingSource[];
 }
 
 const Placeholder: React.FC = () => (
@@ -38,6 +40,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
     activeLayerId,
     onSetActiveLayer,
     onUpdateLayer,
+    groundingSources,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const primaryImage = finalImage || baseImages[0]?.url || null;
@@ -113,6 +116,24 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                 </div>
             )}
           </div>
+
+           {groundingSources && groundingSources.length > 0 && (
+            <div className="absolute bottom-20 right-4 bg-gray-900/80 backdrop-blur-sm p-3 rounded-lg max-w-xs text-xs border border-gray-700">
+              <h4 className="font-bold text-gray-200 mb-2 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
+                Enhanced with Google Search
+              </h4>
+              <ul className="space-y-1 max-h-24 overflow-y-auto pr-2">
+                {groundingSources.map((source, index) => (
+                  <li key={index} className="truncate">
+                    <a href={source.uri} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline" title={source.title}>
+                      {source.title || new URL(source.uri).hostname}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <button
             onClick={handleDownload}

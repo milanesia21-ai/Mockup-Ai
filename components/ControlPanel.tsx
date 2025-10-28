@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, MATERIALS_BY_GARMENT_TYPE, STYLE_OPTIONS, StyleOption, VIEWS } from '../constants';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ export interface MockupConfig {
   aiModelPrompt: string;
   aiScenePrompt: string;
   useAiModelScene: boolean;
+  useGoogleSearch: boolean;
 }
 
 interface ControlPanelProps {
@@ -77,14 +79,16 @@ const ToggleSwitch: React.FC<{
   label: string;
   enabled: boolean;
   setEnabled: (enabled: boolean) => void;
-}> = ({ label, enabled, setEnabled }) => (
+  disabled?: boolean;
+}> = ({ label, enabled, setEnabled, disabled = false }) => (
   <div className="flex items-center justify-between mb-4">
-    <span className="text-sm font-medium text-gray-300">{label}</span>
+    <span className={`text-sm font-medium ${disabled ? 'text-gray-500' : 'text-gray-300'}`}>{label}</span>
     <button
       type="button"
+      disabled={disabled}
       className={`${
         enabled ? 'bg-indigo-600' : 'bg-gray-600'
-      } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500`}
+      } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed`}
       onClick={() => setEnabled(!enabled)}
     >
       <span
@@ -253,6 +257,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       recognition.start();
   };
 
+  const isSearchDisabled = config.selectedStyle === 'Technical Sketch Style' || !!config.customMaterialTexture;
+
   return (
     <div className="h-full flex flex-col space-y-4">
       <h2 className="text-xl font-bold text-white">Mockup Studio</h2>
@@ -331,6 +337,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         <div className="border-t border-gray-700 pt-4 space-y-4">
             <h3 className="text-lg font-semibold text-white mb-2">Details & Style</h3>
+             <ToggleSwitch 
+                label="Enhance with Google Search" 
+                enabled={config.useGoogleSearch} 
+                setEnabled={(val) => handleConfigChange('useGoogleSearch', val)} 
+                disabled={isSearchDisabled}
+             />
+             {isSearchDisabled && <p className="text-xs text-gray-500 -mt-3 mb-2">Not available for sketches or custom textures.</p>}
+
             <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-300 mb-1">Color</label>
                 <input type="color" value={config.selectedColor} onChange={(e) => handleConfigChange('selectedColor', e.target.value)} className="w-full h-10 p-1 bg-gray-700 border-gray-600 rounded-md"/>

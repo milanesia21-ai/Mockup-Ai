@@ -13,8 +13,9 @@ import {
   parseEasyPrompt,
   modifyGarmentImage,
   generateAdditionalView,
+  GroundingSource,
 } from './services/geminiService';
-import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, MATERIALS_BY_GARMENT_TYPE, FONT_OPTIONS, VIEWS } from './constants';
+import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, MATERIALS_BY_GARMENT_TYPE, FONT_OPTIONS, VIEWS, PLACEMENT_COORDINATES } from './constants';
 
 type View = 'generator' | 'editor';
 
@@ -28,6 +29,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [finalRenderedImage, setFinalRenderedImage] = useState<string | null>(null);
+  const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
 
   // --- New Layer-Based State Management for Editor ---
   const [layers, setLayers] = useState<DesignLayer[]>([]);
@@ -49,6 +51,7 @@ const App: React.FC = () => {
     aiModelPrompt: '',
     aiScenePrompt: '',
     useAiModelScene: false,
+    useGoogleSearch: false,
   });
 
   const [presets, setPresets] = useState<Record<string, MockupConfig>>({});
@@ -195,6 +198,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     setFinalRenderedImage(null);
     setGeneratedImages([]);
+    setGroundingSources([]);
     const toastId = toast.loading('Starting mockup generation...');
 
     try {
@@ -213,8 +217,12 @@ const App: React.FC = () => {
 
       if (baseView) {
         toast.loading(`Generating ${baseView} view...`, { id: toastId });
-        const generatedBaseImage = await generateMockup(config, baseView);
-        baseImage = generatedBaseImage;
+        const { imageUrl, groundingSources: sources } = await generateMockup(config, baseView);
+        baseImage = imageUrl;
+        setGroundingSources(sources);
+        if (sources.length > 0) {
+          toast.success("Used Google Search to enhance details.", { id: toastId, duration: 2000 });
+        }
         allGeneratedImages.push({ view: baseView, url: baseImage });
       }
 
@@ -245,26 +253,85 @@ const App: React.FC = () => {
     }
   }, [config]);
   
-  const handleGenerateGraphic = useCallback(async (prompt: string, color: string) => {
+  const handleGenerateGraphic = useCallback(async (prompt: string, color: string, placement: string) => {
     if (!prompt) {
       toast.error("Please enter a prompt for the graphic.");
       return;
     }
+
+    const baseImage = generatedImages[0]?.url;
+    if (!baseImage) {
+      toast.error("Please generate a mockup before adding a graphic.");
+      return;
+    }
     
     setIsLoading(true);
-    const promise = generateGraphic(prompt, config.useAiApparel ? config.aiApparelPrompt : config.selectedGarment, 'Center Chest', color);
-    
-    toast.promise(promise, {
-      loading: 'Creating your custom graphic...',
-      success: (graphicDataUrl) => {
-        addLayer({ type: 'image', content: graphicDataUrl });
-        return 'Custom graphic created!';
-      },
-      error: (err) => err instanceof Error ? err.message : 'An error occurred creating the graphic.',
-    });
+    const toastId = toast.loading('Step 1/2: Generating your custom graphic...');
+    const garmentDesc = config.useAiApparel ? config.aiApparelPrompt : config.selectedGarment;
 
-    promise.catch(() => {}).finally(() => setIsLoading(false));
-  }, [config, addLayer]);
+    try {
+      // Step 1: Generate the isolated graphic
+      const graphicDataUrl = await generateGraphic(prompt, garmentDesc, placement, color);
+
+      toast.loading('Step 2/2: Rendering graphic onto mockup...', { id: toastId });
+
+      // Create a composite image on a canvas. This image will have the new graphic placed
+      // on a transparent background, but at the correct position and size relative to the mockup.
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error("Could not create canvas context");
+
+      // Load base image to get its dimensions
+      const baseImg = new Image();
+      baseImg.src = baseImage;
+      await new Promise<void>((resolve, reject) => {
+        baseImg.onload = () => resolve();
+        baseImg.onerror = () => reject(new Error("Failed to load base image for rendering."));
+      });
+
+      canvas.width = baseImg.naturalWidth;
+      canvas.height = baseImg.naturalHeight;
+      
+      // Load the newly generated graphic to get its dimensions and draw it
+      const graphicImg = new Image();
+      graphicImg.src = graphicDataUrl;
+      await new Promise<void>((resolve, reject) => {
+          graphicImg.onload = () => resolve();
+          graphicImg.onerror = () => reject(new Error("Failed to load generated graphic."));
+      });
+      
+      const coordinates = PLACEMENT_COORDINATES[placement] || { x: 0.5, y: 0.4 };
+      const defaultSize = { width: 0.3, height: 0.3 };
+      
+      const aspectRatio = graphicImg.naturalWidth > 0 ? graphicImg.naturalWidth / graphicImg.naturalHeight : 1;
+      const targetWidth = canvas.width * defaultSize.width;
+      const targetHeight = targetWidth / aspectRatio;
+      const targetX = (coordinates.x * canvas.width) - (targetWidth / 2);
+      const targetY = (coordinates.y * canvas.height) - (targetHeight / 2);
+
+      ctx.drawImage(graphicImg, targetX, targetY, targetWidth, targetHeight);
+      
+      const compositeGraphicUrl = canvas.toDataURL('image/png');
+
+      // Step 2: Call the AI to render the graphic realistically onto the mockup
+      const finalImage = await renderRealisticComposite(baseImage, compositeGraphicUrl);
+      
+      // Update state with the new, final image
+      const originalView = generatedImages[0]?.view || 'Front';
+      setFinalRenderedImage(finalImage);
+      // Replace all previous views with this new single, finalized view.
+      setGeneratedImages([{ view: originalView, url: finalImage }]); 
+      setLayers([]); // The graphic is now baked into the image, so clear layers.
+      
+      toast.success('Graphic successfully added and rendered!', { id: toastId });
+      
+    } catch (error) {
+      const err = error as Error;
+      toast.error(err.message || 'An unknown error occurred.', { id: toastId });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [generatedImages, config.useAiApparel, config.aiApparelPrompt, config.selectedGarment]);
 
   const handleModifyGarment = useCallback(async (prompt: string) => {
     if (!generatedImages[0]) {
@@ -457,6 +524,7 @@ const App: React.FC = () => {
             activeLayerId={activeLayerId}
             onSetActiveLayer={setActiveLayerId}
             onUpdateLayer={updateLayer}
+            groundingSources={groundingSources}
           />
         </div>
       </main>
