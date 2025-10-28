@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { toast } from 'sonner';
 import { FONT_OPTIONS } from '../constants';
+import { generateInspirationPrompt } from '../services/geminiService';
 
 export interface DesignLayer {
     id: string;
@@ -27,12 +29,27 @@ interface EditorPanelProps {
     onDeleteLayer: (id: string) => void;
     onReorderLayer: (from: number, to: number) => void;
     onSetActiveLayer: (id: string | null) => void;
-    onGenerateGraphic: (prompt: string) => void;
+    onGenerateGraphic: (prompt: string, color: string) => void;
+    onModifyGarment: (prompt: string) => void;
     onRenderRealistic: () => void;
     isLoading: boolean;
+    garmentDescription: string;
 }
 
 type EditorTab = 'layers' | 'text' | 'elements' | 'uploads' | 'generate';
+
+const MicIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/>
+        <path d="M8 8a3 3 0 0 0 3-3V3a3 3 0 0 0-6 0v2a3 3 0 0 0 3 3z"/>
+    </svg>
+);
+
+const StopIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z"/>
+    </svg>
+);
 
 const LoadingSpinner: React.FC = () => (
     <div className="flex items-center justify-center">
@@ -63,11 +80,20 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     onReorderLayer,
     onSetActiveLayer,
     onGenerateGraphic,
+    onModifyGarment,
     onRenderRealistic,
-    isLoading
+    isLoading,
+    garmentDescription,
 }) => {
-    const [activeTab, setActiveTab] = useState<EditorTab>('layers');
+    const [activeTab, setActiveTab] = useState<EditorTab>('generate');
     const [graphicPrompt, setGraphicPrompt] = useState('');
+    const [graphicColor, setGraphicColor] = useState('#FFFFFF');
+    const [modificationPrompt, setModificationPrompt] = useState('');
+    const [isInspiring, setIsInspiring] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    const recognitionRef = useRef<any>(null);
+    const dragItem = useRef<number | null>(null);
+    const dragOverItem = useRef<number | null>(null);
     
     const activeLayer = layers.find(l => l.id === activeLayerId);
 
@@ -83,26 +109,155 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         e.target.value = '';
     };
 
+    const handleInspireMeClick = async () => {
+        setIsInspiring(true);
+        const promise = generateInspirationPrompt(garmentDescription);
+
+        toast.promise(promise, {
+            loading: 'Getting an idea from the AI...',
+            success: (idea) => {
+                setGraphicPrompt(idea);
+                return 'Idea generated! ✨';
+            },
+            error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
+        });
+
+        promise.catch(() => {}).finally(() => setIsInspiring(false));
+    };
+
+    const handleVoiceInput = () => {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+          toast.error("Speech recognition is not supported in your browser.");
+          return;
+      }
+
+      if (isRecording) {
+          recognitionRef.current?.stop();
+          return; // onend will handle state changes
+      }
+
+      recognitionRef.current = new SpeechRecognition();
+      const recognition = recognitionRef.current;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || 'en-US'; // Use browser language for better accuracy
+
+      recognition.onstart = () => {
+          setIsRecording(true);
+          toast.info("Recording started. Speak your modification request.");
+      };
+
+      recognition.onend = () => {
+          setIsRecording(false);
+          recognitionRef.current = null;
+          toast.success("Recording stopped.");
+      };
+
+      recognition.onerror = (event: any) => {
+          console.error("Speech recognition error", event.error);
+          let errorMessage = "An unknown error occurred.";
+          if (event.error === 'no-speech') errorMessage = "No speech was detected.";
+          else if (event.error === 'audio-capture') errorMessage = "No microphone was found.";
+          else if (event.error === 'not-allowed') errorMessage = "Microphone access was denied.";
+          toast.error(errorMessage);
+          setIsRecording(false);
+      };
+
+      recognition.onresult = (event: any) => {
+          let finalTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+              if (event.results[i].isFinal) {
+                  finalTranscript += event.results[i][0].transcript;
+              }
+          }
+          if (finalTranscript) {
+             setModificationPrompt(prev => (prev.trim() + ' ' + finalTranscript.trim()).trim());
+          }
+      };
+
+      recognition.start();
+    };
+    
+    const handleDragEnd = () => {
+        if (dragItem.current !== null && dragOverItem.current !== null) {
+            onReorderLayer(dragItem.current, dragOverItem.current);
+        }
+        dragItem.current = null;
+        dragOverItem.current = null;
+    };
+
+
     const renderActiveTab = () => {
         switch(activeTab) {
             case 'generate':
                 return (
                     <div>
-                        <h3 className="text-lg font-semibold mb-2 text-white">Generate AI Graphic</h3>
+                        {/* --- Generate Graphic --- */}
+                        <div className="flex justify-between items-center mb-2">
+                          <h3 className="text-lg font-semibold text-white">Generate AI Graphic</h3>
+                          <button 
+                            onClick={handleInspireMeClick} 
+                            disabled={isLoading || isInspiring}
+                            className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                            title="Let the AI suggest a design idea"
+                          >
+                            <span>🪄</span>
+                            <span>Inspire Me</span>
+                          </button>
+                        </div>
                         <textarea
                             value={graphicPrompt}
                             onChange={(e) => setGraphicPrompt(e.target.value)}
                             placeholder="e.g., A retro-style phoenix, vector art"
                             className="w-full h-24 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
-                            disabled={isLoading}
+                            disabled={isLoading || isInspiring}
                         />
+                         <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Graphic Color</label>
+                            <input
+                                type="color"
+                                value={graphicColor}
+                                onChange={(e) => setGraphicColor(e.target.value)}
+                                className="w-full h-10 p-1 bg-gray-700 border-gray-600 rounded-md"
+                            />
+                        </div>
                          <button
-                            onClick={() => onGenerateGraphic(graphicPrompt)}
-                            disabled={isLoading || !graphicPrompt}
-                            className="w-full mt-2 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            onClick={() => onGenerateGraphic(graphicPrompt, graphicColor)}
+                            disabled={isLoading || isInspiring || !graphicPrompt}
+                            className="w-full mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             {isLoading ? <LoadingSpinner /> : 'Generate & Add Graphic'}
                         </button>
+                        
+                        {/* --- Modify Garment --- */}
+                        <div className="border-t border-gray-700 my-6"></div>
+                        <h3 className="text-lg font-semibold text-white mb-2">Modify Garment with AI</h3>
+                        <p className="text-sm text-gray-400 mb-4">Use your voice or text to make changes to the current mockup.</p>
+                        <div className="flex gap-2">
+                            <textarea
+                                value={modificationPrompt}
+                                onChange={(e) => setModificationPrompt(e.target.value)}
+                                placeholder="e.g., 'add a zipper' or 'make the collar blue'"
+                                className="w-full flex-grow h-20 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
+                                disabled={isLoading}
+                            />
+                            <button 
+                              onClick={handleVoiceInput} 
+                              className={`px-3 rounded-md transition-colors ${isRecording ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600 hover:bg-gray-500'}`} 
+                              title={isRecording ? "Stop Recording" : "Record Voice Prompt"}
+                            >
+                              {isRecording ? <StopIcon/> : <MicIcon />}
+                            </button>
+                        </div>
+                        <button
+                            onClick={() => onModifyGarment(modificationPrompt)}
+                            disabled={isLoading || !modificationPrompt}
+                            className="w-full mt-4 bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            {isLoading ? <LoadingSpinner /> : 'Apply Modifications'}
+                        </button>
+
                     </div>
                 );
             case 'text':
@@ -158,11 +313,26 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                     <div className="space-y-2">
                         <h3 className="text-lg font-semibold mb-2 text-white">Layers</h3>
                         {layers.map((layer, index) => (
-                            <div key={layer.id} onClick={() => onSetActiveLayer(layer.id)} className={`flex items-center p-2 rounded-md cursor-pointer ${activeLayerId === layer.id ? 'bg-indigo-500/30' : 'bg-gray-700'}`}>
-                                <div className="flex-grow truncate pr-2">
-                                    {layer.type === 'image' && <img src={layer.content} className="w-8 h-8 object-contain inline mr-2"/>}
-                                    {layer.type === 'text' && <span className="text-xl font-bold mr-2">T</span>}
-                                    {layer.content}
+                            <div 
+                                key={layer.id}
+                                draggable
+                                onDragStart={() => dragItem.current = index}
+                                onDragEnter={() => dragOverItem.current = index}
+                                onDragEnd={handleDragEnd}
+                                onDragOver={(e) => e.preventDefault()}
+                                onClick={() => onSetActiveLayer(layer.id)} 
+                                className={`flex items-center p-2 rounded-md cursor-pointer transition-all ${activeLayerId === layer.id ? 'bg-indigo-500/30 ring-2 ring-indigo-500' : 'bg-gray-700'}`}
+                            >
+                                <div className="flex-grow truncate pr-2 flex items-center">
+                                    <span className="cursor-grab pr-2">⠿</span>
+                                    {layer.type === 'image' && <img src={layer.content} className="w-8 h-8 object-contain inline mr-2 bg-white/10 rounded"/>}
+                                    {layer.type === 'text' && <span className="text-xl font-bold mr-2 w-8 text-center">T</span>}
+                                    {layer.type === 'shape' && (
+                                        <div className="w-8 h-8 mr-2 flex items-center justify-center">
+                                            <div style={{ backgroundColor: layer.fill }} className={`w-5 h-5 ${layer.content === 'circle' ? 'rounded-full' : ''}`}></div>
+                                        </div>
+                                    )}
+                                    <span className="truncate">{layer.content.startsWith('data:') ? `Image Layer ${index + 1}` : layer.content}</span>
                                 </div>
                                 <div className="flex gap-2">
                                   <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, {visible: !layer.visible})}}>{layer.visible ? '👁️' : '🙈'}</button>

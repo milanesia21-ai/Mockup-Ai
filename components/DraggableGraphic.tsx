@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { DesignLayer } from './EditorPanel';
 
 interface DraggableGraphicProps {
@@ -26,40 +26,37 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
     width: 0,
     height: 0,
   });
-  const [naturalAspectRatio, setNaturalAspectRatio] = useState(1);
-
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    if (img.naturalWidth > 0) {
-      setNaturalAspectRatio(img.naturalWidth / img.naturalHeight);
-      onUpdateLayer(layer.id, { size: { ...layer.size, height: (img.naturalHeight / img.naturalWidth) * layer.size.width }});
-    }
-  };
   
-  // Calculate size in pixels from percentage
-  const getPixelDimensions = useCallback(() => {
-    if (!containerRef.current) return { width: 0, height: 0, x: 0, y: 0 };
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const width = containerRect.width * layer.size.width;
-    let height = containerRect.height * layer.size.height;
-    
-    // For images, maintain aspect ratio
-    if (layer.type === 'image' && naturalAspectRatio !== 0) {
-        height = width / naturalAspectRatio;
-    }
+  const aspectRatio = useRef(1);
 
+  useLayoutEffect(() => {
+    let isMounted = true;
+    if (layer.type === 'image' && layer.content) {
+        const img = new Image();
+        img.src = layer.content;
+        img.onload = () => {
+            if (isMounted && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                aspectRatio.current = img.naturalWidth / img.naturalHeight;
+                updateElementTransform(); // Re-run transform with correct aspect ratio
+            }
+        };
+    } else if (layer.type === 'shape' && layer.size.height > 0) {
+        aspectRatio.current = layer.size.width / layer.size.height;
+    }
+    return () => { isMounted = false; }
+  }, [layer.content, layer.type, layer.size]);
+  
+  const updateElementTransform = useCallback(() => {
+    if (!graphicRef.current || !containerRef.current) return;
+    
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const graphic = graphicRef.current;
+    
+    const width = containerRect.width * layer.size.width;
+    const height = aspectRatio.current > 0 ? width / aspectRatio.current : width;
     const x = layer.position.x * containerRect.width - width / 2;
     const y = layer.position.y * containerRect.height - height / 2;
-    
-    return { width, height, x, y };
-  }, [containerRef, layer.position, layer.size, layer.type, naturalAspectRatio]);
 
-
-  const updateElementTransform = useCallback(() => {
-    if (!graphicRef.current) return;
-    const { width, height, x, y } = getPixelDimensions();
-    
-    const graphic = graphicRef.current;
     graphic.style.width = `${width}px`;
     graphic.style.height = `${height}px`;
     graphic.style.left = `${x}px`;
@@ -68,9 +65,9 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
     graphic.style.opacity = `${layer.opacity}`;
     graphic.style.display = layer.visible ? 'block' : 'none';
 
-  }, [getPixelDimensions, layer.rotation, layer.opacity, layer.visible]);
+  }, [containerRef, layer]);
   
-  useEffect(() => {
+  useLayoutEffect(() => {
     updateElementTransform();
   }, [updateElementTransform]);
 
@@ -121,7 +118,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
         graphic.style.top = `${newY}px`;
       } else if (isInteracting === 'resizing') {
         const newWidth = interactionStart.current.width + dx;
-        const newHeight = newWidth / (layer.type === 'image' ? naturalAspectRatio : (interactionStart.current.width / interactionStart.current.height));
+        const newHeight = aspectRatio.current > 0 ? newWidth / aspectRatio.current : newWidth;
         
         if (interactionStart.current.elementX + newWidth > containerRect.width ||
             interactionStart.current.elementY + newHeight > containerRect.height) {
@@ -148,6 +145,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
           x: (newX + newWidth / 2) / containerRect.width, 
           y: (newY + newHeight / 2) / containerRect.height 
       };
+      
       const finalSize = {
           width: newWidth / containerRect.width,
           height: newHeight / containerRect.height,
@@ -164,7 +162,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
         window.removeEventListener('mousemove', handleMouseMove);
         window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isInteracting, onUpdateLayer, containerRef, naturalAspectRatio, layer.id, layer.type]);
+  }, [isInteracting, onUpdateLayer, containerRef, layer.id]);
 
   const borderStyle = isActive ? 'border-2 border-dashed border-indigo-400' : 'border-2 border-transparent';
 
@@ -180,7 +178,6 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
                 src={layer.content}
                 alt="Draggable graphic"
                 className="w-full h-full object-contain pointer-events-none"
-                onLoad={handleImageLoad}
             />
         )}
         {layer.type === 'text' && (

@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import { Header } from './components/Header';
@@ -10,15 +11,22 @@ import {
   generateGraphic, 
   renderRealisticComposite,
   parseEasyPrompt,
+  modifyGarmentImage,
+  generateAdditionalView,
 } from './services/geminiService';
 import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, MATERIALS_BY_GARMENT_TYPE, FONT_OPTIONS, VIEWS } from './constants';
 
 type View = 'generator' | 'editor';
 
+export interface GeneratedImage {
+  view: string;
+  url: string;
+}
+
 const App: React.FC = () => {
   const [view, setView] = useState<View>('generator');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [finalRenderedImage, setFinalRenderedImage] = useState<string | null>(null);
 
   // --- New Layer-Based State Management for Editor ---
@@ -63,7 +71,7 @@ const App: React.FC = () => {
       id: Date.now().toString(),
       type: 'image',
       content: '',
-      position: { x: 0.5, y: 0.25 },
+      position: { x: 0.5, y: 0.4 },
       size: { width: 0.3, height: 0.3 },
       rotation: 0,
       opacity: 1,
@@ -179,42 +187,72 @@ const App: React.FC = () => {
 
 
   const handleGenerateMockup = useCallback(async () => {
-    setIsLoading(true);
-    setFinalRenderedImage(null);
-    setGeneratedImages([]);
-
     if (config.selectedViews.length === 0) {
       toast.error("Please select at least one view to generate.");
-      setIsLoading(false);
       return;
     }
 
-    const promise = Promise.all(
-      config.selectedViews.map(view => generateMockup(config, view))
-    );
+    setIsLoading(true);
+    setFinalRenderedImage(null);
+    setGeneratedImages([]);
+    const toastId = toast.loading('Starting mockup generation...');
 
-    toast.promise(promise, {
-      loading: `Generating ${config.selectedViews.length} view(s)...`,
-      success: (imageDataUrls) => {
-        setGeneratedImages(imageDataUrls);
-        setLayers([]);
-        setView('editor');
-        return 'Mockup(s) generated successfully!';
-      },
-      error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
-    });
-    
-    promise.catch(() => {}).finally(() => setIsLoading(false));
+    try {
+      const allGeneratedImages: { view: string, url: string }[] = [];
+      const viewsToGenerate = [...config.selectedViews];
+      
+      let baseImage: string | null = null;
+      let baseView: string | null = null;
+      
+      const frontIndex = viewsToGenerate.indexOf('Front');
+      if (frontIndex !== -1) {
+        [baseView] = viewsToGenerate.splice(frontIndex, 1);
+      } else {
+        baseView = viewsToGenerate.shift()!;
+      }
+
+      if (baseView) {
+        toast.loading(`Generating ${baseView} view...`, { id: toastId });
+        const generatedBaseImage = await generateMockup(config, baseView);
+        baseImage = generatedBaseImage;
+        allGeneratedImages.push({ view: baseView, url: baseImage });
+      }
+
+      if (!baseImage) {
+        throw new Error("Failed to generate the initial base image.");
+      }
+
+      for (const view of viewsToGenerate) {
+        toast.loading(`Generating ${view} view (based on ${baseView})...`, { id: toastId });
+        const additionalImage = await generateAdditionalView(baseImage, config, view);
+        allGeneratedImages.push({ view: view, url: additionalImage });
+      }
+
+      const orderedImages = VIEWS
+          .map(view => allGeneratedImages.find(img => img.view === view))
+          .filter((img): img is { view: string; url: string } => !!img);
+
+      setGeneratedImages(orderedImages);
+      setLayers([]);
+      setView('editor');
+      toast.success('Mockup(s) generated successfully!', { id: toastId });
+
+    } catch (error) {
+      const err = error as Error;
+      toast.error(err.message || 'An unknown error occurred.', { id: toastId });
+    } finally {
+      setIsLoading(false);
+    }
   }, [config]);
   
-  const handleGenerateGraphic = useCallback(async (prompt: string) => {
+  const handleGenerateGraphic = useCallback(async (prompt: string, color: string) => {
     if (!prompt) {
       toast.error("Please enter a prompt for the graphic.");
       return;
     }
     
     setIsLoading(true);
-    const promise = generateGraphic(prompt, config.useAiApparel ? config.aiApparelPrompt : config.selectedGarment, 'Center Chest');
+    const promise = generateGraphic(prompt, config.useAiApparel ? config.aiApparelPrompt : config.selectedGarment, 'Center Chest', color);
     
     toast.promise(promise, {
       loading: 'Creating your custom graphic...',
@@ -228,9 +266,32 @@ const App: React.FC = () => {
     promise.catch(() => {}).finally(() => setIsLoading(false));
   }, [config, addLayer]);
 
+  const handleModifyGarment = useCallback(async (prompt: string) => {
+    if (!generatedImages[0]) {
+      toast.error("No mockup available to modify.");
+      return;
+    }
+    
+    setIsLoading(true);
+    const promise = modifyGarmentImage(generatedImages[0].url, prompt);
+    
+    toast.promise(promise, {
+      loading: 'AI is modifying your garment...',
+      success: (newImageUrl) => {
+        const originalView = generatedImages[0]?.view || 'Front'; 
+        setGeneratedImages([{ view: originalView, url: newImageUrl }]); // Replace with the new image
+        setLayers([]); // Clear layers as the base image changed
+        setFinalRenderedImage(null); // Clear final render
+        return 'Garment modified successfully!';
+      },
+      error: (err) => err instanceof Error ? err.message : 'An error occurred during modification.',
+    });
+
+    promise.catch(() => {}).finally(() => setIsLoading(false));
+  }, [generatedImages]);
 
   const handleRenderRealistic = useCallback(async () => {
-    const baseImage = generatedImages[0];
+    const baseImage = generatedImages[0]?.url;
     if (!baseImage || layers.length === 0) {
       toast.error("Please add a design to the mockup before rendering.");
       return;
@@ -322,8 +383,9 @@ const App: React.FC = () => {
     toast.promise(promise, {
         loading: 'AI is rendering a hyper-realistic mockup...',
         success: (finalImage) => {
+            const originalView = generatedImages[0]?.view || 'Front';
             setFinalRenderedImage(finalImage);
-            setGeneratedImages([finalImage]);
+            setGeneratedImages([{ view: originalView, url: finalImage }]);
             setLayers([]);
             return 'Realistic mockup rendered successfully!';
         },
@@ -333,6 +395,11 @@ const App: React.FC = () => {
     promise.catch(() => {}).finally(() => setIsLoading(false));
 
   }, [generatedImages, layers]);
+
+  const garmentDescription = useMemo(() =>
+    config.useAiApparel && config.aiApparelPrompt ? config.aiApparelPrompt : config.selectedGarment,
+    [config.useAiApparel, config.aiApparelPrompt, config.selectedGarment]
+  );
   
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col">
@@ -374,8 +441,10 @@ const App: React.FC = () => {
                 onReorderLayer={reorderLayer}
                 onSetActiveLayer={setActiveLayerId}
                 onGenerateGraphic={handleGenerateGraphic}
+                onModifyGarment={handleModifyGarment}
                 onRenderRealistic={handleRenderRealistic}
                 isLoading={isLoading}
+                garmentDescription={garmentDescription}
                />
             )}
           </div>

@@ -96,6 +96,20 @@ const ToggleSwitch: React.FC<{
   </div>
 );
 
+const MicIcon: React.FC<{className?: string}> = ({className}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${className}`} fill="currentColor" viewBox="0 0 16 16">
+        <path d="M3.5 6.5A.5.5 0 0 1 4 7v1a4 4 0 0 0 8 0V7a.5.5 0 0 1 1 0v1a5 5 0 0 1-4.5 4.975V15h3a.5.5 0 0 1 0 1h-7a.5.5 0 0 1 0-1h3v-2.025A5 5 0 0 1 3 8V7a.5.5 0 0 1 .5-.5z"/>
+        <path d="M8 8a3 3 0 0 0 3-3V3a3 3 0 0 0-6 0v2a3 3 0 0 0 3 3z"/>
+    </svg>
+);
+
+const StopIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z"/>
+    </svg>
+);
+
+
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   config,
   setConfig,
@@ -110,6 +124,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const presetSelectRef = useRef<HTMLSelectElement>(null);
+  const [isRecording, setIsRecording] = useState<false | 'easy' | 'apparel'>(false);
+  const recognitionRef = useRef<any>(null); // Using 'any' for SpeechRecognition for cross-browser compatibility
 
   const handleConfigChange = (key: keyof MockupConfig, value: any) => {
     setConfig(prev => ({...prev, [key]: value}));
@@ -179,6 +195,64 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       e.target.value = '';
   };
 
+  const handleVoiceInput = (fieldToUpdate: 'easyPrompt' | 'aiApparelPrompt') => {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+          toast.error("Speech recognition is not supported in your browser.");
+          return;
+      }
+
+      if (isRecording) {
+          recognitionRef.current?.stop();
+          return;
+      }
+
+      recognitionRef.current = new SpeechRecognition();
+      const recognition = recognitionRef.current;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || 'en-US'; // Use browser language for better accuracy
+
+      recognition.onstart = () => {
+          setIsRecording(fieldToUpdate === 'easyPrompt' ? 'easy' : 'apparel');
+          toast.info("Recording started. Speak your prompt.");
+      };
+
+      recognition.onend = () => {
+          setIsRecording(false);
+          recognitionRef.current = null;
+          toast.success("Recording stopped.");
+      };
+
+      recognition.onerror = (event: any) => {
+          console.error("Speech recognition error", event.error);
+          let errorMessage = "An unknown error occurred.";
+          if (event.error === 'no-speech') {
+            errorMessage = "No speech was detected. Please try again.";
+          } else if (event.error === 'audio-capture') {
+            errorMessage = "No microphone was found. Ensure that a microphone is installed.";
+          } else if (event.error === 'not-allowed') {
+            errorMessage = "Microphone access was denied. Please allow access in your browser settings.";
+          }
+          toast.error(errorMessage);
+          setIsRecording(false);
+      };
+
+      recognition.onresult = (event: any) => {
+          let finalTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+              if (event.results[i].isFinal) {
+                  finalTranscript += event.results[i][0].transcript;
+              }
+          }
+          if (finalTranscript) {
+             setConfig(prev => ({...prev, [fieldToUpdate]: (prev[fieldToUpdate] + ' ' + finalTranscript).trim() }));
+          }
+      };
+
+      recognition.start();
+  };
+
   return (
     <div className="h-full flex flex-col space-y-4">
       <h2 className="text-xl font-bold text-white">Mockup Studio</h2>
@@ -197,6 +271,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <button onClick={onParseEasyPrompt} className="bg-indigo-600 px-3 rounded-md hover:bg-indigo-700" title="Auto-fill options from prompt">
                 🪄
             </button>
+            <button 
+              onClick={() => handleVoiceInput('easyPrompt')}
+              className={`px-3 rounded-md transition-colors ${isRecording === 'easy' ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600 hover:bg-gray-500'}`} 
+              title={isRecording === 'easy' ? "Stop Recording" : "Record Voice Prompt"}
+            >
+              {isRecording === 'easy' ? <StopIcon/> : <MicIcon />}
+            </button>
         </div>
       </div>
 
@@ -207,7 +288,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
             <ToggleSwitch label="Generate Custom Apparel with AI" enabled={config.useAiApparel} setEnabled={(val) => handleConfigChange('useAiApparel', val)} />
             {config.useAiApparel ? (
-                <TextAreaField label="Describe Apparel" value={config.aiApparelPrompt} onChange={(val) => handleConfigChange('aiApparelPrompt', val)} placeholder="e.g., a 1980s sci-fi jacket with high collar"/>
+                <div className="relative">
+                  <TextAreaField 
+                    label="Describe Apparel" 
+                    value={config.aiApparelPrompt} 
+                    onChange={(val) => handleConfigChange('aiApparelPrompt', val)} 
+                    placeholder="e.g., a 1980s sci-fi jacket with high collar"
+                  />
+                  <button 
+                    onClick={() => handleVoiceInput('aiApparelPrompt')}
+                    className={`absolute top-0 right-0 mt-1 mr-1 p-2 rounded-full transition-colors ${isRecording === 'apparel' ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600/50 hover:bg-gray-500/50'}`} 
+                    title={isRecording === 'apparel' ? "Stop Recording" : "Record Apparel Description"}
+                  >
+                    {isRecording === 'apparel' ? <StopIcon/> : <MicIcon className="h-4 w-4" />}
+                  </button>
+                </div>
             ) : (
                 <>
                     <div className="mb-4">

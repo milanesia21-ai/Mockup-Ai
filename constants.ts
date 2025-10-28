@@ -1,3 +1,4 @@
+
 import { MockupConfig as TMockupConfig } from './components/ControlPanel';
 export type MockupConfig = TMockupConfig;
 
@@ -210,6 +211,26 @@ Generate a clean, 2D technical flat sketch of a single apparel item for a fashio
 2.  The background MUST be a pure, solid white (#FFFFFF).
 3.  **ABSOLUTELY NO TEXT.** Do not add any text, labels, annotations, measurements, or callouts. The image must be purely visual.
 4.  Do not include shadows, textures, wrinkles, colors, or any photographic elements. It must be a simple line drawing.
+`;
+
+export const ADDITIONAL_VIEW_PHOTO_PROMPT = `
+You are an expert AI fashion visualizer. The user has provided an image of a garment and wants to see another view of it.
+Your task is to generate a photorealistic {{view}} view of the EXACT SAME garment shown in the provided image.
+
+**CRITICAL RULES:**
+1.  **Consistency is Key:** The generated image MUST be of the same garment. Match the color, material, texture, design style, and any unique features or graphics from the reference image perfectly.
+2.  **Maintain Style:** The new view should match the presentation style of the reference image (e.g., if it's a "ghost mannequin", the new view should also be a "ghost mannequin").
+3.  **Output:** The output must ONLY be the image of the garment from the new perspective. Do not add text or watermarks.
+`;
+
+export const ADDITIONAL_VIEW_SKETCH_PROMPT = `
+You are an expert AI fashion technical illustrator. The user has provided a technical flat sketch of a garment and wants another view.
+Your task is to generate a technical flat sketch of the {{view}} view of the EXACT SAME garment shown in the provided sketch.
+
+**CRITICAL RULES:**
+1.  **Consistency is Key:** The new sketch must perfectly match the design, proportions, and style details (like seams, stitching, etc.) of the reference sketch.
+2.  **Maintain Format:** The output MUST be a clean, 2D vector-style line drawing with black outlines on a pure white background.
+3.  **NO TEXT:** Do not add any text, labels, or annotations.
 `;
 
 

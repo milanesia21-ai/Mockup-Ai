@@ -1,9 +1,12 @@
+
 import React, { useRef } from 'react';
 import { DraggableGraphic } from './DraggableGraphic';
 import { DesignLayer } from './EditorPanel';
+import { GeneratedImage } from '../App';
+
 
 interface DisplayAreaProps {
-  baseImages: string[];
+  baseImages: GeneratedImage[];
   finalImage: string | null;
   layers: DesignLayer[];
   activeLayerId: string | null;
@@ -37,15 +40,26 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
     onUpdateLayer,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const primaryImage = finalImage || baseImages[0] || null;
+  const primaryImage = finalImage || baseImages[0]?.url || null;
 
   const handleDownload = () => {
     if (!primaryImage) return;
-    
-    const link = document.createElement('a');
-    link.download = 'apparel-mockup-final.png';
-    link.href = primaryImage;
-    link.click();
+
+    if (finalImage) {
+      // Single final image download
+      const link = document.createElement('a');
+      link.download = 'apparel-mockup-final.png';
+      link.href = finalImage;
+      link.click();
+    } else {
+      // Download all generated views (could be one or more)
+      baseImages.forEach(image => {
+        const link = document.createElement('a');
+        link.download = `apparel-mockup-${image.view.toLowerCase().replace(' ', '-')}.png`;
+        link.href = image.url;
+        link.click();
+      });
+    }
   };
   
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -73,8 +87,8 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                     {baseImages.map((image, index) => (
                         <img 
                             key={index}
-                            src={image} 
-                            alt={`Generated apparel mockup view ${index + 1}`}
+                            src={image.url} 
+                            alt={`Generated apparel mockup view ${image.view}`}
                             className="w-full h-full object-contain rounded-md"
                         />
                     ))}

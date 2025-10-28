@@ -1,5 +1,7 @@
 {
   "name": "Apparel Mockup AI",
   "description": "A professional vector mockup generator for men's apparel using AI. Select a garment, style, and aspect ratio to generate high-quality, e-commerce ready mockups.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }
