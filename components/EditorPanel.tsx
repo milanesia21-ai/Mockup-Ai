@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS } from '../constants';
@@ -293,7 +292,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 return (
                     <div>
                          <h3 className="text-lg font-semibold mb-4 text-white">Text Tools</h3>
-                         <button onClick={() => onAddLayer({type: 'text', content: 'Hello World', fontFamily: 'Arial', fontSize: 50, color: '#FFFFFF'})} className="w-full bg-gray-600 p-2 rounded-md mb-4">Add Text</button>
+                         <button onClick={() => onAddLayer({type: 'text', content: 'Hello World', fontFamily: 'Arial', fontWeight: 'normal', fontSize: 50, color: '#FFFFFF'})} className="w-full bg-gray-600 p-2 rounded-md mb-4">Add Text</button>
                          {activeLayer?.type === 'text' && (
                             <div className="space-y-4">
                                 <textarea
@@ -301,10 +300,35 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                     onChange={(e) => onUpdateLayer(activeLayerId!, { content: e.target.value })}
                                     className="w-full h-24 bg-gray-700 border border-gray-600 rounded-md p-2"
                                 />
-                                <select value={activeLayer.fontFamily} onChange={e => onUpdateLayer(activeLayerId!, { fontFamily: e.target.value })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2">
-                                    {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
-                                </select>
-                                <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value })} className="w-full p-1 h-10 bg-gray-700 rounded-md"/>
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Font Family</label>
+                                    <select value={activeLayer.fontFamily} onChange={e => onUpdateLayer(activeLayerId!, { fontFamily: e.target.value })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2">
+                                        {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
+                                    </select>
+                                </div>
+
+                                {/* --- CODICE AGGIUNTO --- */}
+                                <div className="mb-4">
+                                  <label className="block text-sm font-medium text-gray-300 mb-1">Font Weight</label>
+                                  <select 
+                                    value={activeLayer.fontWeight || 'normal'} 
+                                    onChange={e => onUpdateLayer(activeLayerId!, { fontWeight: e.target.value })} 
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md p-2"
+                                  >
+                                    <option value="100">Thin (100)</option>
+                                    <option value="300">Light (300)</option>
+                                    <option value-"400">Normal (400)</option>
+                                    <option value="500">Medium (500)</option>
+                                    <option value="700">Bold (700)</option>
+                                    <option value="900">Black (900)</option>
+                                  </select>
+                                </div>
+                                {/* --- FINE CODICE AGGIUNTO --- */}
+
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Text Color</label>
+                                    <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value })} className="w-full p-1 h-10 bg-gray-700 rounded-md"/>
+                                </div>
                             </div>
                          )}
                     </div>
