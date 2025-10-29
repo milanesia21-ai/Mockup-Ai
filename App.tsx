@@ -530,6 +530,8 @@ const App: React.FC = () => {
     [config.useAiApparel, config.aiApparelPrompt, config.selectedGarment]
   );
   
+  const propagationTargetCount = finalRenderedImage && generatedImages.length > 1 ? generatedImages.length - 1 : 0;
+  
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col">
       <Toaster position="top-right" richColors theme="dark" />
@@ -582,6 +584,7 @@ const App: React.FC = () => {
                 onRedo={redo}
                 canUndo={canUndo}
                 canRedo={canRedo}
+                propagationTargetCount={propagationTargetCount}
                />
             )}
           </div>

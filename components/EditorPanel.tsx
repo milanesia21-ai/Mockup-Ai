@@ -53,6 +53,7 @@ interface EditorPanelProps {
     onRedo: () => void;
     canUndo: boolean;
     canRedo: boolean;
+    propagationTargetCount: number;
 }
 
 type EditorTab = 'layers' | 'generate' | 'text' | 'elements' | 'uploads';
@@ -111,6 +112,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     onRedo,
     canUndo,
     canRedo,
+    propagationTargetCount,
 }) => {
     const [activeTab, setActiveTab] = useState<EditorTab>('generate');
     const [graphicPrompt, setGraphicPrompt] = useState('');
@@ -581,13 +583,13 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 >
                     {isLoading ? <LoadingSpinner /> : 'Render Realistic Mockup'}
                 </button>
-                {finalRenderedImage && (
+                {finalRenderedImage && propagationTargetCount > 0 && (
                      <button
                         onClick={onPropagateDesign}
                         disabled={isLoading}
                         className="w-full mt-2 bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                        {isLoading ? <LoadingSpinner /> : 'Propagate Design to All Views'}
+                        {isLoading ? <LoadingSpinner /> : `Propagate Design to ${propagationTargetCount} Other View${propagationTargetCount > 1 ? 's' : ''}`}
                     </button>
                 )}
             </div>
