@@ -1,11 +1,11 @@
 
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import { Header } from './components/Header';
 import { ControlPanel, MockupConfig } from './components/ControlPanel';
 import { DisplayArea } from './components/DisplayArea';
-import { EditorPanel } from './components/EditorPanel';
-import type { DesignLayer } from './components/EditorPanel';
+import { EditorPanel, DesignLayer, ModificationRequest } from './components/EditorPanel';
 import { 
   generateMockup, 
   generateGraphic, 
@@ -13,6 +13,7 @@ import {
   parseEasyPrompt,
   modifyGarmentImage,
   generateAdditionalView,
+  propagateDesignToView,
   GroundingSource,
 } from './services/geminiService';
 import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, MATERIALS_BY_GARMENT_TYPE, FONT_OPTIONS, VIEWS, PLACEMENT_COORDINATES } from './constants';
@@ -24,6 +25,51 @@ export interface GeneratedImage {
   url: string;
 }
 
+// --- History Hook for Undo/Redo ---
+const useHistory = <T,>(initialState: T) => {
+  const [history, setHistory] = useState<T[]>([initialState]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const setState = useCallback((action: T | ((prevState: T) => T)) => {
+    const currentState = history[currentIndex];
+    const newState = typeof action === 'function' 
+        ? (action as (prevState: T) => T)(currentState) 
+        : action;
+    
+    if (JSON.stringify(currentState) === JSON.stringify(newState)) {
+        return; // Don't add to history if state is the same
+    }
+
+    const newHistory = history.slice(0, currentIndex + 1);
+    newHistory.push(newState);
+    setHistory(newHistory);
+    setCurrentIndex(newHistory.length - 1);
+  }, [currentIndex, history]);
+
+  const undo = useCallback(() => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prevIndex => prevIndex - 1);
+    }
+  }, [currentIndex]);
+
+  const redo = useCallback(() => {
+    if (currentIndex < history.length - 1) {
+      setCurrentIndex(prevIndex => prevIndex - 1);
+    }
+  }, [currentIndex, history.length]);
+  
+  const reset = useCallback((newState: T) => {
+    setHistory([newState]);
+    setCurrentIndex(0);
+  }, []);
+
+  const canUndo = currentIndex > 0;
+  const canRedo = currentIndex < history.length - 1;
+
+  return { state: history[currentIndex], setState, undo, redo, canUndo, canRedo, reset };
+};
+
+
 const App: React.FC = () => {
   const [view, setView] = useState<View>('generator');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -32,7 +78,15 @@ const App: React.FC = () => {
   const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
 
   // --- New Layer-Based State Management for Editor ---
-  const [layers, setLayers] = useState<DesignLayer[]>([]);
+  const { 
+      state: layers, 
+      setState: setLayers, 
+      undo, 
+      redo, 
+      canUndo, 
+      canRedo, 
+      reset: resetLayers 
+  } = useHistory<DesignLayer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
 
   // --- New Generator State ---
@@ -83,18 +137,18 @@ const App: React.FC = () => {
     };
     setLayers(prev => [...prev, newLayer]);
     setActiveLayerId(newLayer.id);
-  }, []);
+  }, [setLayers]);
 
   const updateLayer = useCallback((id: string, updates: Partial<DesignLayer>) => {
     setLayers(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
-  }, []);
+  }, [setLayers]);
 
   const deleteLayer = useCallback((id: string) => {
     setLayers(prev => prev.filter(l => l.id !== id));
     if (activeLayerId === id) {
       setActiveLayerId(null);
     }
-  }, [activeLayerId]);
+  }, [activeLayerId, setLayers]);
 
   const reorderLayer = useCallback((fromIndex: number, toIndex: number) => {
     setLayers(prev => {
@@ -103,7 +157,7 @@ const App: React.FC = () => {
       result.splice(toIndex, 0, removed);
       return result;
     });
-  }, []);
+  }, [setLayers]);
 
   const handleEasyPromptParse = useCallback(async () => {
     if (!config.easyPrompt) return;
@@ -241,7 +295,7 @@ const App: React.FC = () => {
           .filter((img): img is { view: string; url: string } => !!img);
 
       setGeneratedImages(orderedImages);
-      setLayers([]);
+      resetLayers([]);
       setView('editor');
       toast.success('Mockup(s) generated successfully!', { id: toastId });
 
@@ -251,9 +305,9 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [config]);
+  }, [config, resetLayers]);
   
-  const handleGenerateGraphic = useCallback(async (prompt: string, color: string, placement: string) => {
+  const handleGenerateGraphic = useCallback(async (prompt: string, color: string, placement: string, designStyle: string, texturePrompt?: string) => {
     if (!prompt) {
       toast.error("Please enter a prompt for the graphic.");
       return;
@@ -271,59 +325,19 @@ const App: React.FC = () => {
 
     try {
       // Step 1: Generate the isolated graphic
-      const graphicDataUrl = await generateGraphic(prompt, garmentDesc, placement, color);
+      const graphicDataUrl = await generateGraphic(prompt, garmentDesc, placement, color, designStyle, texturePrompt);
 
       toast.loading('Step 2/2: Rendering graphic onto mockup...', { id: toastId });
 
-      // Create a composite image on a canvas. This image will have the new graphic placed
-      // on a transparent background, but at the correct position and size relative to the mockup.
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error("Could not create canvas context");
-
-      // Load base image to get its dimensions
-      const baseImg = new Image();
-      baseImg.src = baseImage;
-      await new Promise<void>((resolve, reject) => {
-        baseImg.onload = () => resolve();
-        baseImg.onerror = () => reject(new Error("Failed to load base image for rendering."));
-      });
-
-      canvas.width = baseImg.naturalWidth;
-      canvas.height = baseImg.naturalHeight;
-      
-      // Load the newly generated graphic to get its dimensions and draw it
-      const graphicImg = new Image();
-      graphicImg.src = graphicDataUrl;
-      await new Promise<void>((resolve, reject) => {
-          graphicImg.onload = () => resolve();
-          graphicImg.onerror = () => reject(new Error("Failed to load generated graphic."));
-      });
-      
       const coordinates = PLACEMENT_COORDINATES[placement] || { x: 0.5, y: 0.4 };
-      const defaultSize = { width: 0.3, height: 0.3 };
       
-      const aspectRatio = graphicImg.naturalWidth > 0 ? graphicImg.naturalWidth / graphicImg.naturalHeight : 1;
-      const targetWidth = canvas.width * defaultSize.width;
-      const targetHeight = targetWidth / aspectRatio;
-      const targetX = (coordinates.x * canvas.width) - (targetWidth / 2);
-      const targetY = (coordinates.y * canvas.height) - (targetHeight / 2);
-
-      ctx.drawImage(graphicImg, targetX, targetY, targetWidth, targetHeight);
+      addLayer({
+        type: 'image',
+        content: graphicDataUrl,
+        position: coordinates,
+      });
       
-      const compositeGraphicUrl = canvas.toDataURL('image/png');
-
-      // Step 2: Call the AI to render the graphic realistically onto the mockup
-      const finalImage = await renderRealisticComposite(baseImage, compositeGraphicUrl);
-      
-      // Update state with the new, final image
-      const originalView = generatedImages[0]?.view || 'Front';
-      setFinalRenderedImage(finalImage);
-      // Replace all previous views with this new single, finalized view.
-      setGeneratedImages([{ view: originalView, url: finalImage }]); 
-      setLayers([]); // The graphic is now baked into the image, so clear layers.
-      
-      toast.success('Graphic successfully added and rendered!', { id: toastId });
+      toast.success('Graphic generated and added as a new layer!', { id: toastId });
       
     } catch (error) {
       const err = error as Error;
@@ -331,31 +345,76 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [generatedImages, config.useAiApparel, config.aiApparelPrompt, config.selectedGarment]);
+  }, [generatedImages, config.useAiApparel, config.aiApparelPrompt, config.selectedGarment, addLayer]);
 
-  const handleModifyGarment = useCallback(async (prompt: string) => {
+  const handleModifyGarment = useCallback(async (modification: ModificationRequest) => {
     if (!generatedImages[0]) {
       toast.error("No mockup available to modify.");
       return;
     }
     
     setIsLoading(true);
-    const promise = modifyGarmentImage(generatedImages[0].url, prompt);
+    const promise = modifyGarmentImage(generatedImages[0].url, modification);
     
     toast.promise(promise, {
-      loading: 'AI is modifying your garment...',
+      loading: 'AI is applying direct-to-garment modifications...',
       success: (newImageUrl) => {
         const originalView = generatedImages[0]?.view || 'Front'; 
-        setGeneratedImages([{ view: originalView, url: newImageUrl }]); // Replace with the new image
-        setLayers([]); // Clear layers as the base image changed
+        setGeneratedImages(prev => prev.map((img, i) => i === 0 ? { ...img, url: newImageUrl } : { ...img, url: '' })); // Invalidate other views
+        resetLayers([]); // Clear layers as the base image changed
         setFinalRenderedImage(null); // Clear final render
+        toast.info("Other views have been cleared as the base garment has changed. Please re-generate if needed.", { duration: 5000 });
         return 'Garment modified successfully!';
       },
       error: (err) => err instanceof Error ? err.message : 'An error occurred during modification.',
     });
 
     promise.catch(() => {}).finally(() => setIsLoading(false));
-  }, [generatedImages]);
+  }, [generatedImages, resetLayers]);
+  
+  const handlePropagateDesign = useCallback(async () => {
+    const renderedImage = generatedImages.find(img => img.url === finalRenderedImage);
+    const cleanImages = generatedImages.filter(img => img.url !== finalRenderedImage);
+
+    if (!finalRenderedImage || !renderedImage || cleanImages.length === 0) {
+        toast.error("A primary view must be rendered first, and other views must exist to propagate to.");
+        return;
+    }
+
+    setIsLoading(true);
+    const toastId = toast.loading(`Propagating design from ${renderedImage.view} to ${cleanImages.length} other view(s)...`);
+
+    try {
+        const propagationPromises = cleanImages.map(target => 
+            propagateDesignToView(
+                renderedImage.url,
+                target.url,
+                renderedImage.view,
+                target.view
+            ).then(newUrl => ({ ...target, url: newUrl }))
+        );
+
+        const propagatedImages = await Promise.all(propagationPromises);
+
+        const finalImageSet = [...generatedImages];
+        propagatedImages.forEach(pImg => {
+            const index = finalImageSet.findIndex(fImg => fImg.view === pImg.view);
+            if (index !== -1) {
+                finalImageSet[index] = pImg;
+            }
+        });
+
+        setGeneratedImages(finalImageSet);
+        setFinalRenderedImage(null);
+        toast.success("Design propagated to all views successfully!", { id: toastId });
+
+    } catch (error) {
+        const err = error as Error;
+        toast.error(err.message, { id: toastId });
+    } finally {
+        setIsLoading(false);
+    }
+}, [finalRenderedImage, generatedImages]);
 
   const handleRenderRealistic = useCallback(async () => {
     const baseImage = generatedImages[0]?.url;
@@ -372,16 +431,17 @@ const App: React.FC = () => {
       if (!ctx) throw new Error("Could not create canvas context");
 
       const baseImg = new Image();
+      baseImg.crossOrigin = "Anonymous"; // Allow loading from data URLs without tainting canvas
       baseImg.src = baseImage;
       await new Promise((resolve, reject) => {
         baseImg.onload = resolve;
-        baseImg.onerror = reject;
+        baseImg.onerror = (err) => reject(new Error(`Failed to load base image: ${err.toString()}`));
       });
 
       canvas.width = baseImg.naturalWidth;
       canvas.height = baseImg.naturalHeight;
       
-      const renderLayers = [...layers];
+      const renderLayers = [...layers].reverse(); // Render from bottom up
 
       for (const layer of renderLayers) {
         if (!layer.visible) continue;
@@ -393,13 +453,14 @@ const App: React.FC = () => {
         
         if (layer.type === 'image') {
             const graphicImg = new Image();
+            graphicImg.crossOrigin = "Anonymous";
             graphicImg.src = layer.content;
             await new Promise((resolve, reject) => {
                 graphicImg.onload = resolve;
-                graphicImg.onerror = reject;
+                graphicImg.onerror = () => reject(new Error("Failed to load a graphic layer."));
             });
             
-            const aspectRatio = graphicImg.naturalWidth / graphicImg.naturalHeight;
+            const aspectRatio = (graphicImg.naturalWidth > 0 && graphicImg.naturalHeight > 0) ? (graphicImg.naturalWidth / graphicImg.naturalHeight) : 1;
             const targetHeight = targetWidth / aspectRatio;
             const targetX = (layer.position.x * canvas.width) - (targetWidth / 2);
             const targetY = (layer.position.y * canvas.height) - (targetHeight / 2);
@@ -452,8 +513,9 @@ const App: React.FC = () => {
         success: (finalImage) => {
             const originalView = generatedImages[0]?.view || 'Front';
             setFinalRenderedImage(finalImage);
-            setGeneratedImages([{ view: originalView, url: finalImage }]);
-            setLayers([]);
+            // IMPORTANT: Update the URL in the main array, don't replace it, to preserve other views
+            setGeneratedImages(prev => prev.map((img, index) => index === 0 ? { ...img, url: finalImage } : img));
+            resetLayers([]);
             return 'Realistic mockup rendered successfully!';
         },
         error: (err) => err instanceof Error ? err.message : 'An error occurred during rendering.',
@@ -461,7 +523,7 @@ const App: React.FC = () => {
     
     promise.catch(() => {}).finally(() => setIsLoading(false));
 
-  }, [generatedImages, layers]);
+  }, [generatedImages, layers, resetLayers]);
 
   const garmentDescription = useMemo(() =>
     config.useAiApparel && config.aiApparelPrompt ? config.aiApparelPrompt : config.selectedGarment,
@@ -510,8 +572,16 @@ const App: React.FC = () => {
                 onGenerateGraphic={handleGenerateGraphic}
                 onModifyGarment={handleModifyGarment}
                 onRenderRealistic={handleRenderRealistic}
+                onPropagateDesign={handlePropagateDesign}
+                finalRenderedImage={finalRenderedImage}
                 isLoading={isLoading}
                 garmentDescription={garmentDescription}
+                garmentColor={config.selectedColor}
+                designStyle={config.selectedDesignStyle}
+                onUndo={undo}
+                onRedo={redo}
+                canUndo={canUndo}
+                canRedo={canRedo}
                />
             )}
           </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { DesignLayer } from './EditorPanel';
 
@@ -48,23 +47,39 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
   
   const updateElementTransform = useCallback(() => {
     if (!graphicRef.current || !containerRef.current) return;
-    
+
     const containerRect = containerRef.current.getBoundingClientRect();
     const graphic = graphicRef.current;
     
     const width = containerRect.width * layer.size.width;
-    const height = width / aspectRatio;
-    const x = layer.position.x * containerRect.width - width / 2;
-    const y = layer.position.y * containerRect.height - height / 2;
 
+    if (layer.type === 'text') {
+        graphic.style.height = 'auto';
+        const pixelFontSize = (layer.fontSize || 50) * (containerRect.width / 1000);
+        graphic.style.fontSize = `${pixelFontSize}px`;
+    } else {
+        const height = width / aspectRatio;
+        graphic.style.height = `${height}px`;
+        graphic.style.fontSize = '';
+    }
+    
     graphic.style.width = `${width}px`;
-    graphic.style.height = `${height}px`;
-    graphic.style.left = `${x}px`;
-    graphic.style.top = `${y}px`;
-    graphic.style.transform = `rotate(${layer.rotation}deg)`;
-    graphic.style.opacity = `${layer.opacity}`;
-    graphic.style.display = layer.visible ? 'block' : 'none';
 
+    // Use a timeout to allow the browser to compute the element's new height if it's 'auto'
+    setTimeout(() => {
+        if (!graphicRef.current || !containerRef.current) return;
+        const currentHeight = graphicRef.current.offsetHeight;
+        const x = layer.position.x * containerRect.width - width / 2;
+        const y = layer.position.y * containerRect.height - currentHeight / 2;
+
+        graphic.style.left = `${x}px`;
+        graphic.style.top = `${y}px`;
+        graphic.style.transform = `rotate(${layer.rotation}deg)`;
+        graphic.style.opacity = `${layer.opacity}`;
+        graphic.style.display = layer.visible ? 'flex' : 'none';
+        graphic.style.alignItems = 'center';
+        graphic.style.justifyContent = 'center';
+    }, 0);
   }, [containerRef, layer, aspectRatio]);
   
   useLayoutEffect(() => {
@@ -118,7 +133,13 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
         graphic.style.top = `${newY}px`;
       } else if (isInteracting === 'resizing') {
         const newWidth = interactionStart.current.width + dx;
-        const newHeight = newWidth / aspectRatio;
+        
+        let newHeight: number;
+        if (layer.type === 'text') {
+            newHeight = graphic.offsetHeight; // Height is auto, don't change it on resize
+        } else {
+            newHeight = newWidth / aspectRatio;
+        }
         
         if (interactionStart.current.elementX + newWidth > containerRect.width ||
             interactionStart.current.elementY + newHeight > containerRect.height) {
@@ -126,7 +147,9 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
         }
 
         graphic.style.width = `${Math.max(20, newWidth)}px`;
-        graphic.style.height = `${Math.max(20, newHeight)}px`;
+        if (layer.type !== 'text') {
+            graphic.style.height = `${Math.max(20, newHeight)}px`;
+        }
       }
     };
 
@@ -182,12 +205,12 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
             />
         )}
         {layer.type === 'text' && (
-             <div className="w-full h-full pointer-events-none flex items-center justify-center" style={{
+             <div className="pointer-events-none w-full" style={{
                 fontFamily: layer.fontFamily,
-                fontSize: '100px', // This will be scaled by the container
-                fontWeight: layer.fontWeight,
+                fontWeight: layer.fontWeight || 'normal',
                 color: layer.color,
-                whiteSpace: 'nowrap'
+                wordBreak: 'break-word',
+                textAlign: 'center',
              }}>
                 {layer.content}
             </div>

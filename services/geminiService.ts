@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { 
     GARMENT_CATEGORIES, 
@@ -12,6 +13,7 @@ import {
     PHOTOREALISTIC_APPAREL_PROMPT_WITH_SEARCH,
     MockupConfig
 } from '../constants';
+import type { ModificationRequest } from "../components/EditorPanel";
 
 const API_KEY = process.env.API_KEY;
 
@@ -306,16 +308,39 @@ export async function generateAdditionalView(
 }
 
 
-export async function generateGraphic(prompt: string, garment: string, placement: string, color: string): Promise<string> {
-  const fullPrompt = `
-  **Primary Goal: Create a vector-style graphic with a transparent background.**
+export async function generateGraphic(
+    prompt: string, 
+    garment: string, 
+    placement: string, 
+    color: string,
+    designStyle: string,
+    texturePrompt?: string
+): Promise<string> {
 
-  **Graphic Details:**
-  - **Content:** A high-resolution, professional graphic of "${prompt}".
-  - **Color:** The primary color of the graphic should be **${color}**. Complementary colors are allowed, but the main color must be dominant.
-  - **Style:** The graphic should be in a vector, logo, or clean illustration style, suitable for placing on a piece of apparel like a ${garment}.
-  - **Optimization:** The shape and aspect ratio of the graphic should be optimized to fit well on the **${placement}** area of the garment.
+  let fullPrompt = `
+  You are a graphic asset generator for apparel. Your goal is to create an isolated, professional graphic with a transparent background.
 
+  **Primary Graphic Goal:**
+  - **Prompt:** A graphic of "${prompt}".
+  - **Primary Color:** ${color}
+  
+  **Destination Context (CRUCIAL):**
+  - **Garment:** ${garment}
+  - **Design Style:** ${designStyle}
+  - **Intended Placement:** ${placement}
+
+  **Generation Instructions:**
+  1.  **Style Adaptation:** Interpret the graphic prompt ("${prompt}") through the lens of the Design Style (${designStyle}). DO NOT generate a generic graphic. The aesthetic must match the target style. For example, a [Japanese Streetwear] lion should look different from a [Minimalist/Normcore] lion.
+  2.  **Placement Optimization:** Since the graphic is for the ${placement} area, ensure its shape and orientation are visually impactful for that location.
+  `;
+  
+  if (texturePrompt && texturePrompt.trim() !== '') {
+    fullPrompt += `
+  3.  **Texture:** CRITICAL: The graphic MUST have the visual texture of "${texturePrompt}". It should not look flat. For example, if the texture prompt is "embroidered patch", the result must look like it's made of thread. If it's "leather", it should have a leather texture.
+    `;
+  }
+
+  fullPrompt += `
   **CRITICAL OUTPUT RULES:**
   1.  **TRANSPARENT BACKGROUND:** The final image file **MUST** have a transparent alpha channel.
   2.  **NO BACKGROUND COLOR:** Do NOT render any background color, not even white. The background must be fully transparent.
@@ -345,6 +370,46 @@ export async function generateGraphic(prompt: string, garment: string, placement
   }
 }
 
+export async function generateColorPalette(
+    garmentColor: string, 
+    designStyle: string
+): Promise<string[]> {
+  const prompt = `
+    You are an expert color theorist and fashion designer.
+    My garment's primary color is "${garmentColor}".
+    The design style is "${designStyle}".
+
+    Create a palette of 5 colors (including neutral and accent colors) that would complement this garment and style perfectly.
+
+    Return ONLY a JSON array of strings containing the HEX codes.
+    Example: ["#FFFFFF", "#000000", "#FFD700", "#BDB76B", "#8A2BE2"]
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+        }
+      },
+    });
+
+    const palette = JSON.parse(response.text.trim());
+    if (Array.isArray(palette) && palette.every(item => typeof item === 'string' && item.startsWith('#'))) {
+        return palette as string[];
+    }
+    throw new Error("AI returned an invalid palette format.");
+  } catch (error) {
+    console.error("Error generating color palette:", error);
+    throw new Error("The AI failed to suggest a color palette. Please try again.");
+  }
+}
+
+
 export async function generateInspirationPrompt(garment: string): Promise<string> {
   const prompt = `
     You are a creative director. Brainstorm a concise, visually interesting graphic design idea for a ${garment}.
@@ -372,18 +437,23 @@ export async function generateInspirationPrompt(garment: string): Promise<string
   }
 }
 
-export async function modifyGarmentImage(baseImage: string, prompt: string): Promise<string> {
+export async function modifyGarmentImage(baseImage: string, modification: ModificationRequest): Promise<string> {
    const fullPrompt = `
-    You are an expert fashion photo editor. The user has provided a base image of a garment and a modification request.
-    Your task is to apply the requested modification to the garment in the image, maintaining photorealism.
+    You are a professional apparel design assistant. Your task is to perform a 'Direct-to-Garment' (DTG) modification on the provided base image, preserving photorealism.
 
-    Modification Request: "${prompt}"
+    **Reference Image:** [Base Image Provided]
 
-    CRITICAL INSTRUCTIONS:
-    1.  Apply ONLY the requested change. Do not alter other parts of the garment or the background.
-    2.  The final image must be a photorealistic version of the modified garment.
-    3.  Maintain the original style, lighting, and texture of the base image.
-    4.  The output must be only the modified image. Do not add any text or watermarks.
+    **Modification Request:**
+    - **Type:** ${modification.type}
+    - **Content:** ${modification.content}
+    - **Semantic Location:** ${modification.location || 'N/A'}
+    - **Required Style:** ${modification.style}
+
+    **Critical Instructions:**
+    1.  **Mesh Analysis:** Analyze the topography of the garment in the Reference Image (folds, shadows, texture).
+    2.  **Warping & Application:** Apply the requested content (${modification.content}) to the specified semantic location. The content must realistically follow the fabric's folds and shadows. It must appear printed or stitched onto the garment, not flatly overlaid.
+    3.  **Style Matching:** Interpret the 'Required Style' to render the content correctly (e.g., if style is 'cracked, vintage varsity font', the text must look like that). For 'Structural' changes, apply the modification as described.
+    4.  **Output:** Return ONLY the modified image, with the same dimensions and background as the original. Do not add text or watermarks.
    `;
 
    try {
@@ -453,4 +523,53 @@ export async function renderRealisticComposite(baseImage: string, compositeGraph
     }
     throw new Error("Failed to render realistic mockup. Please check the console for more details.");
    }
+}
+
+export async function propagateDesignToView(
+  renderedSourceImage: string,
+  cleanTargetImage: string,
+  sourceView: string,
+  targetView: string
+): Promise<string> {
+  const prompt = `
+    You are a 360° product visualizer. Your task is to propagate a design from one view of a garment to another.
+
+    **Image 1 (Reference):** Shows the '${sourceView}' view of a garment with a design applied.
+    **Image 2 (Target):** Shows the clean '${targetView}' view of the SAME garment.
+
+    **Instructions:**
+    1.  **Analyze Design:** Examine Image 1 to identify all non-original design elements (graphics, text, etc.).
+    2.  **Logical Inference:** Determine if and how these design elements would be visible or continue onto Image 2. For example, a sleeve graphic might wrap around and be partially visible from the back. A chest graphic would not be visible from the back.
+    3.  **Apply Changes:** Modify Image 2 ONLY to include the relevant, visible parts of the design.
+    4.  **Maintain Realism:** The applied changes must perfectly match the style, lighting, and texture of both source images.
+    5.  **Output:** Return the modified Image 2. If no design from Image 1 would logically be visible on Image 2, return Image 2 unchanged.
+  `;
+
+  try {
+    const sourceImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(renderedSourceImage) } };
+    const targetImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(cleanTargetImage) } };
+    const textPart = { text: prompt };
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: { parts: [textPart, sourceImagePart, targetImagePart] },
+      config: {
+        responseModalities: [Modality.IMAGE],
+      },
+    });
+
+    const part = response.candidates?.[0]?.content?.parts?.[0];
+    if (part?.inlineData) {
+      return `data:image/png;base64,${part.inlineData.data}`;
+    } else {
+      console.error(`Gemini API returned no image for design propagation to ${targetView}:`, JSON.stringify(response, null, 2));
+      throw new Error(`The AI failed to propagate the design to the ${targetView} view.`);
+    }
+  } catch (error: any) {
+    console.error(`Error propagating design to ${targetView}:`, error);
+    if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
+        throw new Error("Request limit reached while propagating design. Please wait and try again.");
+    }
+    throw new Error(`Failed to propagate design to the ${targetView} view. Please try again.`);
+  }
 }

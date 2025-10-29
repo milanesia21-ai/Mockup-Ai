@@ -1,7 +1,11 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS } from '../constants';
-import { generateInspirationPrompt } from '../services/geminiService';
+import { generateInspirationPrompt, generateColorPalette } from '../services/geminiService';
+import { 
+    Undo as UndoIcon, 
+    Redo as RedoIcon,
+} from './Icons';
 
 export interface DesignLayer {
     id: string;
@@ -21,6 +25,13 @@ export interface DesignLayer {
     fill?: string;
 }
 
+export interface ModificationRequest {
+  type: 'Structural' | 'Text' | 'Graphic';
+  content: string;
+  location: string;
+  style: string;
+}
+
 interface EditorPanelProps {
     layers: DesignLayer[];
     activeLayerId: string | null;
@@ -29,11 +40,19 @@ interface EditorPanelProps {
     onDeleteLayer: (id: string) => void;
     onReorderLayer: (from: number, to: number) => void;
     onSetActiveLayer: (id: string | null) => void;
-    onGenerateGraphic: (prompt: string, color: string, placement: string) => void;
-    onModifyGarment: (prompt: string) => void;
+    onGenerateGraphic: (prompt: string, color: string, placement: string, designStyle: string, texturePrompt?: string) => void;
+    onModifyGarment: (modification: ModificationRequest) => void;
     onRenderRealistic: () => void;
+    onPropagateDesign: () => void;
+    finalRenderedImage: string | null;
     isLoading: boolean;
     garmentDescription: string;
+    garmentColor: string;
+    designStyle: string;
+    onUndo: () => void;
+    onRedo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
 }
 
 type EditorTab = 'layers' | 'generate' | 'text' | 'elements' | 'uploads';
@@ -82,15 +101,31 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     onGenerateGraphic,
     onModifyGarment,
     onRenderRealistic,
+    onPropagateDesign,
+    finalRenderedImage,
     isLoading,
     garmentDescription,
+    garmentColor,
+    designStyle,
+    onUndo,
+    onRedo,
+    canUndo,
+    canRedo,
 }) => {
     const [activeTab, setActiveTab] = useState<EditorTab>('generate');
     const [graphicPrompt, setGraphicPrompt] = useState('');
+    const [texturePrompt, setTexturePrompt] = useState('');
     const [graphicColor, setGraphicColor] = useState('#FFFFFF');
     const [graphicPlacement, setGraphicPlacement] = useState<string>('');
-    const [modificationPrompt, setModificationPrompt] = useState('');
+    const [modificationRequest, setModificationRequest] = useState<ModificationRequest>({
+        type: 'Structural',
+        content: '',
+        location: '',
+        style: '',
+    });
     const [isInspiring, setIsInspiring] = useState(false);
+    const [isSuggestingColors, setIsSuggestingColors] = useState(false);
+    const [suggestedPalette, setSuggestedPalette] = useState<string[]>([]);
     const [isRecording, setIsRecording] = useState(false);
     const recognitionRef = useRef<any>(null);
     const dragItem = useRef<number | null>(null);
@@ -108,10 +143,15 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     }, [garmentDescription]);
     
     useEffect(() => {
-        if (placementOptions.length > 0 && !placementOptions.includes(graphicPlacement)) {
-            setGraphicPlacement(placementOptions[0]);
+        if (placementOptions.length > 0) {
+            if (!placementOptions.includes(graphicPlacement)) {
+                setGraphicPlacement(placementOptions[0]);
+            }
+            if (!placementOptions.includes(modificationRequest.location)) {
+                setModificationRequest(prev => ({ ...prev, location: placementOptions[0] }));
+            }
         }
-    }, [placementOptions, graphicPlacement]);
+    }, [placementOptions, graphicPlacement, modificationRequest.location]);
 
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -140,6 +180,22 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         });
 
         promise.catch(() => {}).finally(() => setIsInspiring(false));
+    };
+
+     const handleSuggestColors = async () => {
+        setIsSuggestingColors(true);
+        const promise = generateColorPalette(garmentColor, designStyle);
+
+        toast.promise(promise, {
+            loading: 'Generating color palette...',
+            success: (palette) => {
+                setSuggestedPalette(palette);
+                return 'Palette suggested! 🎨';
+            },
+            error: (err) => err instanceof Error ? err.message : 'Could not suggest colors.',
+        });
+
+        promise.catch(() => {}).finally(() => setIsSuggestingColors(false));
     };
 
     const handleVoiceInput = () => {
@@ -189,7 +245,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
               }
           }
           if (finalTranscript) {
-             setModificationPrompt(prev => (prev.trim() + ' ' + finalTranscript.trim()).trim());
+             setModificationRequest(prev => ({...prev, content: (prev.content.trim() + ' ' + finalTranscript.trim()).trim()}));
           }
       };
 
@@ -231,6 +287,16 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                             disabled={isLoading || isInspiring}
                         />
                          <div className="mt-4">
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Texture Prompt (Optional)</label>
+                            <textarea
+                                value={texturePrompt}
+                                onChange={(e) => setTexturePrompt(e.target.value)}
+                                placeholder="e.g., embroidered patch, leather, denim"
+                                className="w-full h-16 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
+                                disabled={isLoading}
+                            />
+                        </div>
+                         <div className="mt-4">
                             <label className="block text-sm font-medium text-gray-300 mb-1">Placement</label>
                             <select
                                 value={graphicPlacement}
@@ -242,45 +308,104 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                             </select>
                         </div>
                          <div className="mt-4">
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Graphic Color</label>
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-sm font-medium text-gray-300">Graphic Color</label>
+                                <button 
+                                    onClick={handleSuggestColors}
+                                    disabled={isLoading || isSuggestingColors}
+                                    className="text-xs text-indigo-400 hover:underline disabled:opacity-50"
+                                >
+                                    {isSuggestingColors ? 'Suggesting...' : '🎨 Suggest Colors'}
+                                </button>
+                            </div>
                             <input
                                 type="color"
                                 value={graphicColor}
                                 onChange={(e) => setGraphicColor(e.target.value)}
                                 className="w-full h-10 p-1 bg-gray-700 border-gray-600 rounded-md"
                             />
+                            {suggestedPalette.length > 0 && (
+                                <div className="flex gap-2 mt-2">
+                                    {suggestedPalette.map((color, index) => (
+                                        <button
+                                            key={index}
+                                            onClick={() => setGraphicColor(color)}
+                                            className="w-full h-8 rounded-md border-2 border-transparent hover:border-white transition-all"
+                                            style={{ backgroundColor: color }}
+                                            title={color}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                          <button
-                            onClick={() => onGenerateGraphic(graphicPrompt, graphicColor, graphicPlacement)}
+                            onClick={() => onGenerateGraphic(graphicPrompt, graphicColor, graphicPlacement, designStyle, texturePrompt)}
                             disabled={isLoading || isInspiring || !graphicPrompt || !graphicPlacement}
                             className="w-full mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            {isLoading ? <LoadingSpinner /> : 'Generate & Add Graphic'}
+                            {isLoading ? <LoadingSpinner /> : 'Generate & Add To Layers'}
                         </button>
                         
                         {/* --- Modify Garment --- */}
                         <div className="border-t border-gray-700 my-6"></div>
-                        <h3 className="text-lg font-semibold text-white mb-2">Modify Garment with AI</h3>
-                        <p className="text-sm text-gray-400 mb-4">Use your voice or text to make changes to the current mockup.</p>
-                        <div className="flex gap-2">
-                            <textarea
-                                value={modificationPrompt}
-                                onChange={(e) => setModificationPrompt(e.target.value)}
-                                placeholder="e.g., 'add a zipper' or 'make the collar blue'"
-                                className="w-full flex-grow h-20 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
-                                disabled={isLoading}
-                            />
-                            <button 
-                              onClick={handleVoiceInput} 
-                              className={`px-3 rounded-md transition-colors ${isRecording ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600 hover:bg-gray-500'}`} 
-                              title={isRecording ? "Stop Recording" : "Record Voice Prompt"}
-                            >
-                              {isRecording ? <StopIcon/> : <MicIcon />}
-                            </button>
+                        <h3 className="text-lg font-semibold text-white mb-2">Direct-to-Garment AI</h3>
+                        <p className="text-sm text-gray-400 mb-4">Apply realistic modifications directly to the base mockup.</p>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Modification Type</label>
+                                <select value={modificationRequest.type} onChange={e => setModificationRequest(prev => ({...prev, type: e.target.value as ModificationRequest['type']}))} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3">
+                                    <option>Structural</option>
+                                    <option>Text</option>
+                                    <option>Graphic</option>
+                                </select>
+                            </div>
+                             <div className="relative">
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Content / Description</label>
+                                <textarea
+                                    value={modificationRequest.content}
+                                    onChange={e => setModificationRequest(prev => ({...prev, content: e.target.value}))}
+                                    placeholder={
+                                        modificationRequest.type === 'Structural' ? "e.g., 'add a zipper' or 'make the collar blue'" :
+                                        modificationRequest.type === 'Text' ? "e.g., 'CALIFORNIA 1982'" :
+                                        "e.g., 'a small eagle logo'"
+                                    }
+                                    className="w-full flex-grow h-20 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
+                                    disabled={isLoading}
+                                />
+                                <button 
+                                  onClick={handleVoiceInput} 
+                                  className={`absolute top-8 right-2 p-2 rounded-full transition-colors ${isRecording ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600 hover:bg-gray-500'}`} 
+                                  title={isRecording ? "Stop Recording" : "Record Voice Prompt"}
+                                >
+                                  {isRecording ? <StopIcon/> : <MicIcon />}
+                                </button>
+                            </div>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Style</label>
+                                 <input
+                                    type="text"
+                                    value={modificationRequest.style}
+                                    onChange={e => setModificationRequest(prev => ({...prev, style: e.target.value}))}
+                                    placeholder="e.g., cracked vintage varsity font, off-white"
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3"
+                                />
+                            </div>
+                             {modificationRequest.type !== 'Structural' && <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Location</label>
+                                <select
+                                    value={modificationRequest.location}
+                                    onChange={e => setModificationRequest(prev => ({...prev, location: e.target.value}))}
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3"
+                                    disabled={isLoading || placementOptions.length === 0}
+                                >
+                                    {placementOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                            </div>}
                         </div>
                         <button
-                            onClick={() => onModifyGarment(modificationPrompt)}
-                            disabled={isLoading || !modificationPrompt}
+                            onClick={() => onModifyGarment(modificationRequest)}
+                            disabled={isLoading || !modificationRequest.content}
                             className="w-full mt-4 bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             {isLoading ? <LoadingSpinner /> : 'Apply Modifications'}
@@ -307,7 +432,6 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                     </select>
                                 </div>
 
-                                {/* --- CODICE AGGIUNTO --- */}
                                 <div className="mb-4">
                                   <label className="block text-sm font-medium text-gray-300 mb-1">Font Weight</label>
                                   <select 
@@ -317,14 +441,12 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                   >
                                     <option value="100">Thin (100)</option>
                                     <option value="300">Light (300)</option>
-                                    <option value-"400">Normal (400)</option>
+                                    <option value="400">Normal (400)</option>
                                     <option value="500">Medium (500)</option>
                                     <option value="700">Bold (700)</option>
                                     <option value="900">Black (900)</option>
                                   </select>
                                 </div>
-                                {/* --- FINE CODICE AGGIUNTO --- */}
-
                                 <div className="mb-4">
                                     <label className="block text-sm font-medium text-gray-300 mb-1">Text Color</label>
                                     <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value })} className="w-full p-1 h-10 bg-gray-700 rounded-md"/>
@@ -364,7 +486,13 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
             default:
                 return (
                     <div>
-                      <h3 className="text-lg font-semibold mb-4 text-white">Layers</h3>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-semibold text-white">Layers</h3>
+                        <div className="flex items-center gap-2">
+                          <button onClick={onUndo} disabled={!canUndo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><UndoIcon /></button>
+                          <button onClick={onRedo} disabled={!canRedo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><RedoIcon /></button>
+                        </div>
+                      </div>
                         {layers.length > 0 && (
                           <div className="space-y-2 mb-4">
                               {layers.map((layer, index) => (
@@ -449,10 +577,19 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                  <button
                     onClick={onRenderRealistic}
                     disabled={isLoading || layers.length === 0}
-                    className="w-full mt-2 bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                     {isLoading ? <LoadingSpinner /> : 'Render Realistic Mockup'}
                 </button>
+                {finalRenderedImage && (
+                     <button
+                        onClick={onPropagateDesign}
+                        disabled={isLoading}
+                        className="w-full mt-2 bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        {isLoading ? <LoadingSpinner /> : 'Propagate Design to All Views'}
+                    </button>
+                )}
             </div>
         </div>
     );
