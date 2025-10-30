@@ -1,4 +1,28 @@
 
+// FIX: Moved DesignLayer interface here for global access.
+export interface DesignLayer {
+    id: string;
+    type: 'image' | 'text' | 'shape' | 'drawing';
+    content: string; // URL for image, text content for text, shape type for shape, dataURL for drawing
+    position: { x: number; y: number }; // Center, percentage based
+    size: { width: number, height: number }; // Percentage of container
+    rotation: number;
+    opacity: number;
+    visible: boolean;
+    // New properties for advanced layers
+    blendMode: GlobalCompositeOperation | (string & {});
+    lockTransparency: boolean;
+    // Text specific
+    fontFamily?: string;
+    fontSize?: number; // Relative size
+    fontWeight?: 'normal' | 'bold';
+    textAlign?: 'left' | 'center' | 'right';
+    textDecoration?: 'none' | 'underline' | 'line-through';
+    color?: string;
+    // Shape specific
+    fill?: string;
+}
+
 
 export const AI_IMAGE_MODELS = [
   { name: 'Gemini 2.5 Flash Image', value: 'gemini-2.5-flash-image' },

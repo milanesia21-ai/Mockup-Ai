@@ -1,8 +1,11 @@
 
 
+
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS, BLEND_MODES, ModificationRequest, GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS } from '../constants';
+// FIX: Import DesignLayer from constants.ts after it was moved.
+import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS, BLEND_MODES, ModificationRequest, GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, DesignLayer } from '../constants';
 import { generateInspirationPrompt, generateColorPalette } from '../services/geminiService';
 import { 
     Undo as UndoIcon, 
@@ -16,29 +19,12 @@ import {
     Add as AddIcon,
     MagicWand as MagicWandIcon,
     Upload as UploadIcon,
+    AlignCenter,
+    AlignLeft,
+    AlignRight,
 } from './Icons';
 
-export interface DesignLayer {
-    id: string;
-    type: 'image' | 'text' | 'shape' | 'drawing';
-    content: string; // URL for image, text content for text, shape type for shape, dataURL for drawing
-    position: { x: number; y: number }; // Center, percentage based
-    size: { width: number, height: number }; // Percentage of container
-    rotation: number;
-    opacity: number;
-    visible: boolean;
-    // New properties for advanced layers
-    blendMode: GlobalCompositeOperation | (string & {});
-    lockTransparency: boolean;
-    // Text specific
-    fontFamily?: string;
-    fontSize?: number; // Relative size
-    fontWeight?: string;
-    color?: string;
-    // Shape specific
-    fill?: string;
-}
-
+// FIX: Moved DesignLayer interface to constants.ts to be shared across components/services.
 
 export interface SketchToolsConfig {
     brushType: 'pencil' | 'pen' | 'eraser';
@@ -52,12 +38,13 @@ interface EditorPanelProps {
     layers: DesignLayer[];
     activeLayerId: string | null;
     onAddLayer: (layer: Partial<DesignLayer>) => void;
-    onUpdateLayer: (id: string, updates: Partial<DesignLayer>) => void;
+    onUpdateLayer: (id: string, updates: Partial<DesignLayer>, commit: boolean) => void;
     onDeleteLayer: (id: string) => void;
     onReorderLayer: (from: number, to: number) => void;
     onSetActiveLayer: (id: string | null) => void;
     onGenerateGraphic: (prompt: string, color: string, placement: string, designStyle: string, texturePrompt?: string) => void;
     onModifyGarment: (modification: ModificationRequest) => void;
+    onRenderRealistic: () => void;
     isLoading: boolean;
     garmentDescription: string;
     garmentColor: string;
@@ -116,6 +103,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     onSetActiveLayer,
     onGenerateGraphic,
     onModifyGarment,
+    onRenderRealistic,
     isLoading,
     garmentDescription,
     garmentColor,
@@ -148,14 +136,6 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const dragOverItem = useRef<number | null>(null);
     
     const activeLayer = useMemo(() => layers.find(l => l.id === activeLayerId), [layers, activeLayerId]);
-
-    // Contextually switch to sketch tab when a drawing layer is added/selected
-    useEffect(() => {
-        if (activeLayer?.type === 'drawing') {
-            setActiveTab('sketch');
-        }
-    }, [activeLayer]);
-
 
     const placementOptions = useMemo(() => {
         const garmentDescLower = garmentDescription.toLowerCase();
@@ -373,8 +353,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         {/* Add Text, Shape, Sketch Layer */}
                         <div>
                             <h3 className="text-lg font-semibold text-white mb-2">Add Basic Elements</h3>
-                            <div className="grid grid-cols-3 gap-2">
-                                <button onClick={() => onAddLayer({type: 'text', content: 'Hello World', fontFamily: 'Arial', fontWeight: 'normal', fontSize: 50, color: '#FFFFFF'})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Add Text</button>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => onAddLayer({type: 'text', content: 'Hello World', fontFamily: 'Arial', fontWeight: 'normal', fontSize: 50, color: '#FFFFFF', textAlign: 'center'})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Add Text</button>
+                                <button onClick={() => onAddLayer({type: 'drawing', content: '', size: {width: 1, height: 1}, position: {x: 0.5, y: 0.5}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">
+                                  Sketch Layer
+                                </button>
                                 <button onClick={() => onAddLayer({type: 'shape', content: 'rectangle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Rectangle</button>
                                 <button onClick={() => onAddLayer({type: 'shape', content: 'circle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Circle</button>
                             </div>
@@ -510,9 +493,6 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         <div className="flex items-center gap-2">
                           <button onClick={onUndo} disabled={!canUndo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><UndoIcon /></button>
                           <button onClick={onRedo} disabled={!canRedo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><RedoIcon /></button>
-                          <button onClick={() => onAddLayer({type: 'drawing', content: '', size: {width: 1, height: 1}, position: {x: 0, y: 0}})} className="text-sm bg-gray-700 px-3 py-2 rounded-md hover:bg-gray-600">
-                            + Sketch Layer
-                          </button>
                         </div>
                       </div>
                         {layers.length > 0 ? (
@@ -550,7 +530,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                           </span>
                                       </div>
                                       <div className="flex gap-2">
-                                        <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, {visible: !layer.visible})}}>{layer.visible ? '👁️' : '🙈'}</button>
+                                        <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, {visible: !layer.visible}, true)}}>{layer.visible ? '👁️' : '🙈'}</button>
                                         <button onClick={(e) => { e.stopPropagation(); onDeleteLayer(layer.id)}}>🗑️</button>
                                       </div>
                                   </div>
@@ -559,9 +539,20 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         ) : (
                            <p className="text-gray-500 text-sm text-center py-4">Your design is empty. Use the 'Add' tab to add content.</p>
                         )}
+                        
+                        <div className="border-t border-gray-700 mt-4 pt-4">
+                             <button
+                                onClick={onRenderRealistic}
+                                disabled={isLoading || layers.length === 0}
+                                className="w-full bg-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {isLoading ? <LoadingSpinner /> : 'Render Realistic Mockup'}
+                            </button>
+                            {layers.length === 0 && <p className="text-xs text-gray-500 text-center mt-2">Add layers to enable rendering.</p>}
+                        </div>
 
                         {activeLayer && (
-                            <div className="border-t border-gray-700 pt-4 space-y-4">
+                            <div className="border-t border-gray-700 mt-4 pt-4 space-y-4">
                                 <h4 className="text-md font-semibold mb-2 text-white">Layer Properties</h4>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-1">Opacity ({Math.round(activeLayer.opacity * 100)}%)</label>
@@ -571,21 +562,39 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                         max="1"
                                         step="0.01"
                                         value={activeLayer.opacity}
-                                        onChange={(e) => onUpdateLayer(activeLayer.id, { opacity: parseFloat(e.target.value) })}
+                                        onChange={(e) => onUpdateLayer(activeLayer.id, { opacity: parseFloat(e.target.value) }, false)}
+                                        onMouseUp={(e) => onUpdateLayer(activeLayer.id, { opacity: parseFloat(e.target.value) }, true)}
                                         className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
                                     />
                                 </div>
                                 {activeLayer.type === 'text' && (
                                      <>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-300 mb-1">Font Family</label>
-                                            <select value={activeLayer.fontFamily} onChange={e => onUpdateLayer(activeLayerId!, { fontFamily: e.target.value })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2">
-                                                {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
-                                            </select>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-300 mb-1">Font Family</label>
+                                                <select value={activeLayer.fontFamily} onChange={e => onUpdateLayer(activeLayerId!, { fontFamily: e.target.value }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-sm">
+                                                    {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-300 mb-1">Font Weight</label>
+                                                <select value={activeLayer.fontWeight} onChange={e => onUpdateLayer(activeLayerId!, { fontWeight: e.target.value as any }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2">
+                                                    <option value="normal">Normal</option>
+                                                    <option value="bold">Bold</option>
+                                                </select>
+                                            </div>
                                         </div>
                                          <div>
                                             <label className="block text-sm font-medium text-gray-300 mb-1">Text Color</label>
-                                            <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value })} className="w-full p-1 h-10 bg-gray-700 border border-gray-600 rounded-md"/>
+                                            <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value }, true)} className="w-full p-1 h-10 bg-gray-700 border border-gray-600 rounded-md"/>
+                                        </div>
+                                        <div>
+                                             <label className="block text-sm font-medium text-gray-300 mb-1">Alignment</label>
+                                              <div className="grid grid-cols-3 gap-2">
+                                                <button onClick={() => onUpdateLayer(activeLayerId!, { textAlign: 'left' }, true)} className={`p-2 rounded-md flex justify-center ${activeLayer.textAlign === 'left' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignLeft /></button>
+                                                <button onClick={() => onUpdateLayer(activeLayerId!, { textAlign: 'center' }, true)} className={`p-2 rounded-md flex justify-center ${activeLayer.textAlign === 'center' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignCenter /></button>
+                                                <button onClick={() => onUpdateLayer(activeLayerId!, { textAlign: 'right' }, true)} className={`p-2 rounded-md flex justify-center ${activeLayer.textAlign === 'right' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignRight /></button>
+                                              </div>
                                         </div>
                                     </>
                                 )}
@@ -595,7 +604,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                         <input 
                                             type="color" 
                                             value={activeLayer.fill} 
-                                            onChange={e => onUpdateLayer(activeLayerId!, { fill: e.target.value })} 
+                                            onChange={e => onUpdateLayer(activeLayerId!, { fill: e.target.value }, true)} 
                                             className="w-full p-1 h-10 bg-gray-700 border border-gray-600 rounded-md"
                                         />
                                     </div>
@@ -604,7 +613,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                     <label className="block text-sm font-medium text-gray-300 mb-1">Blend Mode</label>
                                     <select 
                                         value={activeLayer.blendMode} 
-                                        onChange={(e) => onUpdateLayer(activeLayer.id, { blendMode: e.target.value })} 
+                                        onChange={(e) => onUpdateLayer(activeLayer.id, { blendMode: e.target.value }, true)} 
                                         className="w-full bg-gray-700 border border-gray-600 rounded-md p-2"
                                     >
                                         {BLEND_MODES.map(mode => <option key={mode.value} value={mode.value}>{mode.name}</option>)}
@@ -615,7 +624,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                     <button
                                       type="button"
                                       className={`${ activeLayer.lockTransparency ? 'bg-orange-600' : 'bg-gray-600' } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none`}
-                                      onClick={() => onUpdateLayer(activeLayer.id, { lockTransparency: !activeLayer.lockTransparency })}
+                                      onClick={() => onUpdateLayer(activeLayer.id, { lockTransparency: !activeLayer.lockTransparency }, true)}
                                     >
                                       <span className={`${ activeLayer.lockTransparency ? 'translate-x-6' : 'translate-x-1' } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}/>
                                     </button>
@@ -627,16 +636,19 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         }
     }
 
-    const TabButton: React.FC<{tab: EditorTab, icon: React.ReactNode, title: string}> = ({tab, icon, title}) => (
-        <button 
-            onClick={() => setActiveTab(tab)} 
-            className={`px-3 py-2 rounded-lg flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === tab ? 'bg-orange-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
-            title={title}
-        >
-            {icon}
-            <span className="text-xs font-medium">{title}</span>
-        </button>
-    )
+    const TabButton: React.FC<{tab: EditorTab, icon: React.ReactNode, title: string, isVisible?: boolean}> = ({tab, icon, title, isVisible = true}) => {
+        if (!isVisible) return null;
+        return (
+            <button 
+                onClick={() => setActiveTab(tab)} 
+                className={`px-3 py-2 rounded-lg flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === tab ? 'bg-orange-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                title={title}
+            >
+                {icon}
+                <span className="text-xs font-medium">{title}</span>
+            </button>
+        )
+    }
 
     return (
         <div className="p-4">
@@ -644,9 +656,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 <TabButton tab="layers" icon={<LayersIcon />} title="Layers" />
                 <TabButton tab="add" icon={<AddIcon />} title="Add" />
                 <TabButton tab="modify" icon={<MagicWandIcon />} title="AI Modify" />
-                {activeLayer?.type === 'drawing' && (
-                     <TabButton tab="sketch" icon={<PencilIcon />} title="Sketch" />
-                )}
+                <TabButton tab="sketch" icon={<PencilIcon />} title="Sketch" isVisible={activeLayer?.type === 'drawing'} />
             </div>
             
             <div className="mt-4">

@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 
 export const Undo: React.FC<{ className?: string }> = ({ className = "h-5 w-5" }) => (
@@ -78,5 +79,21 @@ export const View3D: React.FC<{ className?: string }> = ({ className = "h-5 w-5"
 export const View2D: React.FC<{ className?: string }> = ({ className = "h-5 w-5" }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24">
         <path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+    </svg>
+);
+
+export const AlignLeft: React.FC<{ className?: string }> = ({ className = "h-5 w-5" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24">
+        <path fill="currentColor" d="M3 21v-2h18v2H3Zm0-4v-2h12v2H3Zm0-4v-2h18v2H3Zm0-4V7h12v2H3Zm0-4V3h18v2H3Z"/>
+    </svg>
+);
+export const AlignCenter: React.FC<{ className?: string }> = ({ className = "h-5 w-5" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24">
+        <path fill="currentColor" d="M3 21v-2h18v2H3Zm4-4v-2h10v2H7Zm-4-4v-2h18v2H3Zm4-4V7h10v2H7Zm-4-4V3h18v2H3Z"/>
+    </svg>
+);
+export const AlignRight: React.FC<{ className?: string }> = ({ className = "h-5 w-5" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24">
+        <path fill="currentColor" d="M3 21v-2h18v2H3Zm6-4v-2h12v2H9Zm-6-4v-2h18v2H3Zm6-4V7h12v2H9ZM3 5V3h18v2H3Z"/>
     </svg>
 );

@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { 
     MockupConfig,
@@ -7,6 +8,7 @@ import {
     DESIGN_STYLE_CATEGORIES,
     MATERIALS_BY_GARMENT_TYPE,
     STYLE_OPTIONS,
+    DesignLayer,
 } from '../constants';
 
 
@@ -498,54 +500,98 @@ export async function generateInspirationPrompt(garment: string, designStyle: st
   }
 }
 
-
-export async function renderRealisticComposite(
+export async function renderDesignOnMockup(
   baseGarmentUrl: string,
-  flatGraphicUrl: string
+  layers: DesignLayer[]
 ): Promise<string> {
-  const prompt = `
-    You are a world-class AI rendering engine for a Print-on-Demand service, similar to Printify or Printful.
-    Your task is to realistically apply a flat graphic onto a photorealistic apparel mockup. The goal is to make the graphic look like it's part of the fabric, not just a sticker on top.
+    const visibleLayers = layers.filter(l => l.visible);
+    if (visibleLayers.length === 0) {
+        throw new Error("No visible layers were provided to render.");
+    }
 
-    You will be given two images:
-    1.  The Base Garment: A photorealistic mockup of a piece of clothing.
-    2.  The Flat Graphic: A graphic with a transparent background that needs to be applied.
+    const imageParts: { inlineData: { mimeType: string; data: string } }[] = [];
+    const layerRecipe: Partial<DesignLayer>[] = [];
+    let imageCounter = 0;
 
-    **Rendering Instructions (Displacement Mapping Simulation):**
-    1.  **Analyze Fabric:** Analyze the Base Garment image to understand the fabric's texture, folds, wrinkles, seams, and lighting.
-    2.  **Warp & Distort:** Apply the Flat Graphic to the garment, but warp and distort its pixels to perfectly follow the underlying fabric's contours. The graphic should bend into creases and stretch over folds.
-    3.  **Apply Lighting & Shadows:** The lighting and shadows from the Base Garment must realistically affect the applied graphic. Darken the parts of the graphic that are in shadow and brighten the parts that are highlighted.
-    4.  **Mimic Texture:** Subtly blend the fabric's texture into the graphic itself, so it looks like it was printed on or woven into the material.
+    // Add base garment as the first image
+    imageParts.push({ inlineData: { mimeType: 'image/png', data: dataUrlToBase64(baseGarmentUrl) } });
 
-    **Output:**
-    Return ONLY the final, photorealistic image of the garment with the graphic perfectly integrated. Do not add any text or watermarks.
-  `;
-  
-  const baseImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(baseGarmentUrl) } };
-  const graphicImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(flatGraphicUrl) } };
-  const textPart = { text: prompt };
+    visibleLayers.forEach(layer => {
+        const layerCopy: any = { ...layer };
+        delete layerCopy.id; // The AI doesn't need the UUID
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts: [baseImagePart, graphicImagePart, textPart] },
-      config: { responseModalities: [Modality.IMAGE] },
+        if ((layer.type === 'image' || layer.type === 'drawing') && layer.content) {
+            imageParts.push({ inlineData: { mimeType: 'image/png', data: dataUrlToBase64(layer.content) } });
+            imageCounter++;
+            layerCopy.content = `REFERENCE_IMAGE_${imageCounter}`; // Placeholder for the prompt
+        }
+        layerRecipe.push(layerCopy);
     });
-    const part = response.candidates?.[0]?.content?.parts?.[0];
-    if (part?.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
-    } else {
-      console.error("Gemini API returned no image for realistic composite:", JSON.stringify(response, null, 2));
-      throw new Error("The AI failed to render the realistic composite.");
+
+    const prompt = `
+        You are a world-class AI rendering engine for apparel design. Your task is to apply a "design recipe" (a JSON array of layers) onto a base garment image to create a photorealistic final mockup.
+
+        **Input Images:**
+        - The first image provided is the **Base Garment**.
+        - Subsequent images (if any) are referenced in the JSON recipe as "REFERENCE_IMAGE_1", "REFERENCE_IMAGE_2", etc.
+
+        **JSON Design Recipe:**
+        \`\`\`json
+        ${JSON.stringify(layerRecipe, null, 2)}
+        \`\`\`
+
+        **CRITICAL Rendering Instructions:**
+        1.  **Iterate Through Layers:** Process each layer object from the JSON array in order.
+        2.  **Apply Transformations:** For each layer, apply its properties precisely:
+            -   \`position\`: Place the center of the layer at the given {x, y} percentage coordinates (0,0 is top-left, 1,1 is bottom-right).
+            -   \`size\`: Scale the layer to the given {width, height} percentage of the base garment's dimensions.
+            -   \`rotation\`: Rotate the layer by the specified degrees.
+            -   \`opacity\`: Apply the specified opacity.
+            -   \`blendMode\`: Use the specified composite operation when blending with layers below.
+        3.  **Render Content:**
+            -   If \`content\` is "REFERENCE_IMAGE_X", use the corresponding input image.
+            -   If \`type\` is "text", render the text content using its \`fontFamily\`, \`fontWeight\`, \`color\`, and \`textAlign\` properties. The text should scale to fit the layer's size.
+            -   If \`type\` is "shape", render the shape (e.g., 'rectangle', 'circle') and fill it with its \`fill\` color.
+        4.  **Photorealistic Integration (Displacement Mapping Simulation):**
+            -   **Warp & Distort:** This is the most important step. Realistically warp and distort each applied layer to follow the underlying fabric's contours, folds, wrinkles, and seams.
+            -   **Apply Lighting & Shadows:** The lighting and shadows from the Base Garment must realistically affect all applied layers.
+            -   **Mimic Texture:** Subtly blend the fabric's texture into the layers so they look printed on or woven into the material, not just pasted on top.
+
+        **Final Output:**
+        Return ONLY the final, single, photorealistic image of the garment with all layers from the recipe perfectly rendered and integrated. Do not add any text, labels, or watermarks.
+    `;
+
+    const allParts = [{ text: prompt }, ...imageParts];
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: { parts: allParts },
+            config: { responseModalities: [Modality.IMAGE] },
+        });
+        const part = response.candidates?.[0]?.content?.parts?.[0];
+        if (part?.inlineData) {
+            return `data:image/png;base64,${part.inlineData.data}`;
+        } else {
+            const candidate = response.candidates?.[0];
+            const finishReason = candidate?.finishReason;
+            const finishMessage = candidate?.finishMessage || "No specific reason provided.";
+            console.error("Gemini API returned no image for design mockup:", JSON.stringify(response, null, 2));
+            if (finishReason === 'SAFETY') {
+                throw new Error("Rendering was blocked due to safety policies. Please adjust your design.");
+            }
+            throw new Error(`The AI failed to render the design: ${finishMessage}`);
+        }
+    } catch (error: any) {
+        console.error("Error rendering design mockup:", error);
+        if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
+            throw new Error("Request limit reached. Please wait a moment and try again.");
+        }
+        if (error?.message) throw error;
+        throw new Error("Failed to render the design. The AI may be experiencing issues.");
     }
-  } catch (error: any) {
-    console.error("Error rendering realistic composite:", error);
-    if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-        throw new Error("Request limit reached. Please wait a moment and try again.");
-    }
-    throw new Error("Failed to render realistic composite. Please try again.");
-  }
 }
+
 
 export async function propagateDesignToView(
     designedViewUrl: string,

@@ -1,8 +1,10 @@
 
+
 import React, { useRef, useLayoutEffect, useEffect, useState, useCallback } from 'react';
 import { DraggableGraphic } from './DraggableGraphic';
-import { DesignLayer, SketchToolsConfig } from './EditorPanel';
-import type { GeneratedImage } from '../constants';
+// FIX: DesignLayer is now exported from constants.ts. This import has been updated to reflect the new location.
+import { SketchToolsConfig } from './EditorPanel';
+import type { GeneratedImage, DesignLayer } from '../constants';
 import { GroundingSource } from '../services/geminiService';
 import { View3D, View2D } from './Icons';
 import { Mockup3DViewer } from './Mockup3DViewer';
@@ -14,8 +16,7 @@ interface DisplayAreaProps {
   layers: DesignLayer[];
   activeLayerId: string | null;
   onSetActiveLayer: (id: string | null) => void;
-  onUpdateLayer: (id:string, updates: Partial<DesignLayer>) => void;
-  onDrawingUpdate: (id: string, newContent: string) => void;
+  onUpdateLayer: (id:string, updates: Partial<DesignLayer>, commit: boolean) => void;
   groundingSources: GroundingSource[];
   sketchTools: SketchToolsConfig;
   isLoading: boolean;
@@ -56,52 +57,62 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
     activeLayerId,
     onSetActiveLayer,
     onUpdateLayer,
-    onDrawingUpdate,
     groundingSources,
     sketchTools,
     isLoading
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
+  const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const lastPoint = useRef<{ x: number; y: number } | null>(null);
   const [imageError, setImageError] = useState(false);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
 
+  const activeLayer = layers.find(l => l.id === activeLayerId);
+  const isSketchMode = activeLayer?.type === 'drawing';
   const primaryImage = finalImage || baseImages[0]?.url || null;
 
-  // Ensure canvas refs are populated
-  useEffect(() => {
-    canvasRefs.current = layers.reduce((acc, layer) => {
-      acc[layer.id] = canvasRefs.current[layer.id] || null;
-      return acc;
-    }, {} as Record<string, HTMLCanvasElement | null>);
-  }, [layers]);
-
-  // Reset image error state and view mode when the primary image changes
   useEffect(() => {
     setImageError(false);
     setViewMode('2d');
   }, [primaryImage]);
 
 
-  // Redraw canvases when layer content changes (e.g., on undo/redo)
+  // Sync drawing canvas with active layer content
   useLayoutEffect(() => {
-    layers.forEach(layer => {
-      if (layer.type === 'drawing' && canvasRefs.current[layer.id]) {
-        const canvas = canvasRefs.current[layer.id]!;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const img = new Image();
-          img.onload = () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-          };
-          img.src = layer.content;
+    const canvas = drawingCanvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Set canvas dimensions from the container
+    const container = containerRef.current;
+    if (container) {
+        const { clientWidth, clientHeight } = container;
+        const imgElement = container.querySelector('img[data-is-base-image="true"]') as HTMLImageElement;
+        if(imgElement) {
+             const ar = imgElement.naturalWidth / imgElement.naturalHeight;
+             const newW = Math.min(clientWidth, clientHeight * ar);
+             const newH = Math.min(clientHeight, clientWidth / ar);
+             canvas.width = newW;
+             canvas.height = newH;
+        } else {
+             canvas.width = clientWidth;
+             canvas.height = clientHeight;
         }
-      }
-    });
-  }, [layers]);
+    }
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (isSketchMode && activeLayer.content) {
+        const img = new Image();
+        img.onload = () => {
+             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        };
+        img.src = activeLayer.content;
+    }
+  }, [activeLayerId, activeLayer?.content, isSketchMode, layers]); // Rerun when active layer changes
 
 
   const getBrushStyle = (opacity: number) => {
@@ -119,7 +130,6 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
 
   const getCompositeOperation = () => {
       if (sketchTools.brushType === 'eraser') return 'destination-out';
-      const activeLayer = layers.find(l => l.id === activeLayerId);
       return activeLayer?.blendMode || 'source-over';
   };
 
@@ -131,30 +141,22 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    const activeLayer = layers.find(l => l.id === activeLayerId);
-    if (!activeLayer || activeLayer.type !== 'drawing') return;
-
+    if (!isSketchMode) return;
     setIsDrawing(true);
     const rect = e.currentTarget.getBoundingClientRect();
     lastPoint.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!isDrawing || !lastPoint.current) return;
+      if (!isDrawing || !lastPoint.current || !isSketchMode) return;
 
-      const activeLayer = layers.find(l => l.id === activeLayerId);
-      const canvas = activeLayer && canvasRefs.current[activeLayer.id];
+      const canvas = drawingCanvasRef.current;
       if (!canvas) return;
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       
-      if (activeLayer?.lockTransparency) {
-          ctx.globalCompositeOperation = 'source-atop';
-      } else {
-          ctx.globalCompositeOperation = getCompositeOperation();
-      }
-      
+      ctx.globalCompositeOperation = activeLayer.lockTransparency ? 'source-atop' : getCompositeOperation();
       ctx.strokeStyle = getBrushStyle(sketchTools.brushOpacity);
       ctx.lineWidth = sketchTools.brushSize;
       ctx.lineCap = 'round';
@@ -165,7 +167,6 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
       
       drawLine(ctx, lastPoint.current, currentPoint);
       
-      // Handle Symmetry
       if (sketchTools.symmetry !== 'none') {
         const { width, height } = canvas;
         const symFrom = { ...lastPoint.current };
@@ -180,22 +181,17 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
         }
         drawLine(ctx, symFrom, symTo);
       }
-
       lastPoint.current = currentPoint;
   };
 
   const handleMouseUp = () => {
-      if (!isDrawing) return;
+      if (!isDrawing || !isSketchMode) return;
       setIsDrawing(false);
       lastPoint.current = null;
       
-      const activeLayer = layers.find(l => l.id === activeLayerId);
-      if (activeLayer && activeLayer.type === 'drawing') {
-          const canvas = canvasRefs.current[activeLayer.id];
-          if (canvas) {
-            // This final update commits the drawing to the history state
-            onUpdateLayer(activeLayer.id, { content: canvas.toDataURL() });
-          }
+      const canvas = drawingCanvasRef.current;
+      if (canvas) {
+        onUpdateLayer(activeLayer.id, { content: canvas.toDataURL() }, true);
       }
   };
 
@@ -204,13 +200,11 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
     if (!primaryImage) return;
 
     if (finalImage) {
-      // Single final image download
       const link = document.createElement('a');
       link.download = 'apparel-mockup-final.png';
       link.href = finalImage;
       link.click();
     } else {
-      // Download all generated views (could be one or more)
       baseImages.forEach(image => {
         const link = document.createElement('a');
         link.download = `apparel-mockup-${image.view.toLowerCase().replace(' ', '-')}.png`;
@@ -222,16 +216,13 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
   
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
-      // Deselect if clicking the container itself or the base image
-      if (target === containerRef.current || target.dataset.isBaseImage) {
+      // Deselect if clicking on the container itself or the base image
+      if (target === containerRef.current || target.dataset.isBaseImage || target.id === "drawing-canvas") {
           onSetActiveLayer(null);
       }
   };
 
   const isGalleryView = baseImages.length > 1 && !finalImage;
-  const activeLayer = layers.find(l => l.id === activeLayerId);
-  const isSketchMode = activeLayer?.type === 'drawing';
-
 
   return (
     <div 
@@ -247,12 +238,8 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
             ) : (
               <div 
                 ref={containerRef} 
-                className={`w-full h-full flex items-center justify-center ${isSketchMode ? 'cursor-crosshair' : ''}`}
+                className={`w-full h-full flex items-center justify-center relative`}
                 onClick={handleContainerClick}
-                onMouseDown={isSketchMode ? handleMouseDown : undefined}
-                onMouseMove={isSketchMode ? handleMouseMove : undefined}
-                onMouseUp={isSketchMode ? handleMouseUp : undefined}
-                onMouseLeave={isSketchMode ? handleMouseUp : undefined}
               >
                 {isGalleryView ? (
                      <div className="grid grid-cols-2 gap-4 w-full h-full overflow-y-auto">
@@ -271,47 +258,18 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                         ))}
                      </div>
                 ) : (
-                    <div className="relative w-full h-full">
+                    <div className="relative w-full h-full flex items-center justify-center">
                         <img 
                             src={primaryImage} 
                             alt="Generated apparel mockup" 
-                            className="absolute inset-0 w-full h-full object-contain rounded-md select-none"
+                            className="max-w-full max-h-full object-contain rounded-md select-none"
                             onError={() => setImageError(true)}
                             data-is-base-image="true"
                         />
-                         {/* Render Layers */}
-                         {layers.map((layer, index) => {
-                              if (layer.type === 'drawing') {
-                                 return (
-                                    <canvas
-                                      key={layer.id}
-                                      ref={el => {
-                                          canvasRefs.current[layer.id] = el;
-                                          if (el && primaryImage) {
-                                              const img = new Image();
-                                              img.onload = () => {
-                                                  if (el.width !== img.naturalWidth || el.height !== img.naturalHeight) {
-                                                      el.width = img.naturalWidth;
-                                                      el.height = img.naturalHeight;
-                                                      // Redraw content after resize
-                                                      const ctx = el.getContext('2d');
-                                                      if(ctx && layer.content) {
-                                                          const layerImg = new Image();
-                                                          layerImg.onload = () => ctx.drawImage(layerImg, 0, 0);
-                                                          layerImg.src = layer.content;
-                                                      }
-                                                  }
-                                              }
-                                              img.src = primaryImage;
-                                          }
-                                      }}
-                                      className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-                                      style={{ zIndex: index + 5, opacity: layer.opacity, display: layer.visible ? 'block' : 'none' }}
-                                    />
-                                );
-                              } else {
-                                return containerRef.current && (
-                                    <DraggableGraphic 
+                         <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                            {layers.map((layer, index) => (
+                                layer.type !== 'drawing' && (
+                                     <DraggableGraphic 
                                         key={layer.id}
                                         containerRef={containerRef}
                                         layer={layer}
@@ -320,9 +278,19 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                                         onSetActive={() => onSetActiveLayer(layer.id)}
                                         zIndex={index + 5}
                                     />
-                                );
-                              }
-                          })}
+                                )
+                            ))}
+                         </div>
+                         <canvas
+                            id="drawing-canvas"
+                            ref={drawingCanvasRef}
+                            className={`absolute object-contain ${isSketchMode ? 'cursor-crosshair pointer-events-auto' : 'pointer-events-none'}`}
+                            style={{ zIndex: layers.findIndex(l => l.id === activeLayerId) + 5, opacity: activeLayer?.opacity, display: isSketchMode && activeLayer?.visible ? 'block' : 'none' }}
+                            onMouseDown={isSketchMode ? handleMouseDown : undefined}
+                            onMouseMove={isSketchMode ? handleMouseMove : undefined}
+                            onMouseUp={isSketchMode ? handleMouseUp : undefined}
+                            onMouseLeave={isSketchMode ? handleMouseUp : undefined}
+                          />
                     </div>
                 )}
               </div>

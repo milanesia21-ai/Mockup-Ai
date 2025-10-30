@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+
+import React, { useState, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { toast } from 'sonner';
 
 import { ControlPanel } from '../components/ControlPanel';
-import { EditorPanel, DesignLayer, SketchToolsConfig } from '../components/EditorPanel';
-import { RefinePanel } from '../components/RefinePanel';
+// FIX: Import DesignLayer from constants instead of EditorPanel
+import { EditorPanel, SketchToolsConfig } from '../components/EditorPanel';
 import { DisplayArea } from '../components/DisplayArea';
 
 import {
@@ -14,12 +15,11 @@ import {
     GARMENT_CATEGORIES,
     DESIGN_STYLE_CATEGORIES,
     GARMENT_COLORS,
+    DesignLayer,
 } from '../constants';
 import * as gemini from '../services/geminiService';
 import type { GroundingSource } from '../services/geminiService';
 
-
-// Helper for unique IDs
 const uuidv4 = () => crypto.randomUUID();
 
 const DEFAULT_CONFIG: MockupConfig = {
@@ -40,43 +40,148 @@ const DEFAULT_CONFIG: MockupConfig = {
     selectedModel: 'gemini-2.5-flash-image',
 };
 
-// Custom hook for managing history (undo/redo)
-const useHistory = (initialState: DesignLayer[]) => {
-    const [history, setHistory] = useState<DesignLayer[][]>([initialState]);
-    const [index, setIndex] = useState(0);
+// --- Reducer for State Management ---
 
-    const setState = (action: React.SetStateAction<DesignLayer[]>, overwrite = false) => {
-        const newState = typeof action === 'function' ? action(history[index]) : action;
-        if (overwrite) {
-            const historyCopy = [...history];
-            historyCopy[index] = newState;
-            setHistory(historyCopy);
-        } else {
-            const updatedHistory = history.slice(0, index + 1);
-            setHistory([...updatedHistory, newState]);
-            setIndex(index + 1);
-        }
-    };
+interface EditorState {
+    layers: DesignLayer[];
+    activeLayerId: string | null;
+}
 
-    const undo = () => index > 0 && setIndex(index - 1);
-    const redo = () => index < history.length - 1 && setIndex(index + 1);
-    
-    const resetHistory = (state: DesignLayer[]) => {
-        setHistory([state]);
-        setIndex(0);
-    }
+interface History {
+    past: EditorState[];
+    future: EditorState[];
+}
 
-    return [history[index], setState, undo, redo, index > 0, index < history.length - 1, resetHistory] as const;
+const initialEditorState: EditorState = {
+    layers: [],
+    activeLayerId: null,
 };
 
-type AppStep = 'generate' | 'design' | 'refine';
 
+type EditorAction =
+    | { type: 'ADD_LAYER'; payload: Partial<DesignLayer> }
+    | { type: 'DELETE_LAYER'; payload: { id: string } }
+    | { type: 'UPDATE_LAYER'; payload: { id: string; updates: Partial<DesignLayer> } }
+    | { type: 'COMMIT_UPDATE'; payload: { id: string; updates: Partial<DesignLayer> } }
+    | { type: 'SET_ACTIVE_LAYER'; payload: { id: string | null } }
+    | { type: 'REORDER_LAYER'; payload: { fromIndex: number; toIndex: number } }
+    | { type: 'SET_STATE'; payload: EditorState }
+    // FIX: Add UNDO and REDO types to the discriminated union to fix TS errors.
+    | { type: 'RESET_STATE'; payload?: DesignLayer[] }
+    | { type: 'UNDO' }
+    | { type: 'REDO' };
+
+const historyReducer = (
+    state: { current: EditorState; history: History },
+    action: EditorAction
+): { current: EditorState; history: History } => {
+    const { current, history } = state;
+    const { past, future } = history;
+
+    const editorReducer = (state: EditorState, action: EditorAction): EditorState => {
+        switch (action.type) {
+            case 'ADD_LAYER': {
+                const newLayer: DesignLayer = {
+                    id: uuidv4(), type: 'image', content: '', position: { x: 0.5, y: 0.5 },
+                    size: { width: 0.25, height: 0.25 }, rotation: 0, opacity: 1, visible: true,
+                    blendMode: 'source-over', lockTransparency: false, ...action.payload,
+                };
+                 return {
+                    ...state,
+                    layers: [...state.layers, newLayer],
+                    activeLayerId: newLayer.id,
+                };
+            }
+            case 'DELETE_LAYER': {
+                return {
+                    ...state,
+                    layers: state.layers.filter(l => l.id !== action.payload.id),
+                    activeLayerId: state.activeLayerId === action.payload.id ? null : state.activeLayerId,
+                };
+            }
+             case 'UPDATE_LAYER': {
+                return {
+                    ...state,
+                    layers: state.layers.map(l => l.id === action.payload.id ? { ...l, ...action.payload.updates } : l),
+                };
+            }
+            case 'COMMIT_UPDATE': {
+                 return {
+                    ...state,
+                    layers: state.layers.map(l => l.id === action.payload.id ? { ...l, ...action.payload.updates } : l),
+                };
+            }
+            case 'SET_ACTIVE_LAYER':
+                return { ...state, activeLayerId: action.payload.id };
+            case 'REORDER_LAYER': {
+                const { fromIndex, toIndex } = action.payload;
+                const newLayers = Array.from(state.layers);
+                const [removed] = newLayers.splice(fromIndex, 1);
+                newLayers.splice(toIndex, 0, removed);
+                return { ...state, layers: newLayers };
+            }
+            case 'RESET_STATE':
+                return {
+                    ...initialEditorState,
+                    layers: action.payload || [],
+                };
+             case 'SET_STATE':
+                return action.payload;
+            default:
+                return state;
+        }
+    };
+    
+    // Actions that create a history entry
+    const committingActions = ['ADD_LAYER', 'DELETE_LAYER', 'COMMIT_UPDATE', 'REORDER_LAYER', 'RESET_STATE'];
+    
+    if (action.type === 'UNDO') {
+        if (past.length === 0) return state;
+        const previous = past[past.length - 1];
+        const newPast = past.slice(0, past.length - 1);
+        return {
+            current: previous,
+            history: {
+                past: newPast,
+                future: [current, ...future],
+            },
+        };
+    }
+    
+    if (action.type === 'REDO') {
+         if (future.length === 0) return state;
+        const next = future[0];
+        const newFuture = future.slice(1);
+        return {
+            current: next,
+            history: {
+                past: [...past, current],
+                future: newFuture,
+            },
+        };
+    }
+    
+    const newCurrent = editorReducer(current, action);
+
+    if (committingActions.includes(action.type)) {
+         return {
+            current: newCurrent,
+            history: {
+                past: [...past, current],
+                future: [],
+            },
+        };
+    }
+
+    // For non-committing actions like transient updates
+    return { ...state, current: newCurrent };
+};
+
+
+type AppStep = 'generate' | 'design';
 
 const TabButton: React.FC<{
-    title: string;
-    active: boolean;
-    onClick: () => void;
-    disabled?: boolean;
+    title: string; active: boolean; onClick: () => void; disabled?: boolean;
 }> = ({ title, active, onClick, disabled }) => (
     <button
         onClick={onClick}
@@ -90,10 +195,7 @@ const TabButton: React.FC<{
     </button>
 );
 
-
-// Main View Component
 export const MockupView: React.FC = () => {
-    // Core State
     const [isLoading, setIsLoading] = useState(false);
     const [config, setConfig] = useState<MockupConfig>(DEFAULT_CONFIG);
     const [baseImages, setBaseImages] = useState<GeneratedImage[]>([]);
@@ -101,70 +203,59 @@ export const MockupView: React.FC = () => {
     const [finalImage, setFinalImage] = useState<string | null>(null);
     const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
     const [step, setStep] = useState<AppStep>('generate');
-
-    // Editor/Refine State
-    const [layers, setLayers, undo, redo, canUndo, canRedo, resetHistory] = useHistory([]);
-    const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
-    const [sketchTools, setSketchTools] = useState<SketchToolsConfig>({
-        brushType: 'pencil',
-        brushColor: '#ffffff',
-        brushSize: 10,
-        brushOpacity: 1,
-        symmetry: 'none',
+    
+    const [state, dispatch] = useReducer(historyReducer, {
+        current: initialEditorState,
+        history: { past: [], future: [] },
     });
 
-    // Preset State
+    const { current: editorState, history } = state;
+    const { layers, activeLayerId } = editorState;
+    const canUndo = history.past.length > 0;
+    const canRedo = history.future.length > 0;
+
+    const [sketchTools, setSketchTools] = useState<SketchToolsConfig>({
+        brushType: 'pencil', brushColor: '#ffffff', brushSize: 10, brushOpacity: 1, symmetry: 'none',
+    });
+
     const [presets, setPresets] = useState<Record<string, MockupConfig>>({});
 
     useEffect(() => {
         try {
             const savedPresets = localStorage.getItem('mockupPresets');
-            if (savedPresets) {
-                setPresets(JSON.parse(savedPresets));
-            }
-        } catch (e) {
-            console.error("Failed to load presets from localStorage", e);
-        }
+            if (savedPresets) setPresets(JSON.parse(savedPresets));
+        } catch (e) { console.error("Failed to load presets", e); }
     }, []);
-
-    // --- Core Generation Logic ---
+    
+     const handleUpdateLayer = (id: string, updates: Partial<DesignLayer>, commitToHistory: boolean) => {
+        const actionType = commitToHistory ? 'COMMIT_UPDATE' : 'UPDATE_LAYER';
+        dispatch({ type: actionType, payload: { id, updates } });
+    };
 
     const handleGenerateMockup = useCallback(async () => {
         setIsLoading(true);
         setBaseImages([]);
         setCleanBaseImages([]);
         setFinalImage(null);
-        resetHistory([]);
+        dispatch({ type: 'RESET_STATE' });
         setGroundingSources([]);
 
         const generationTask = async () => {
-            if (config.selectedViews.length === 0) {
-                throw new Error("Please select at least one view to generate.");
-            }
-
+            if (config.selectedViews.length === 0) throw new Error("Please select at least one view.");
+            
             const newImages: GeneratedImage[] = [];
             let combinedSources: GroundingSource[] = [];
 
-            // 1. Generate the first view
             const firstView = config.selectedViews[0];
             const firstResult = await gemini.generateMockup(config, firstView);
-            const firstImage: GeneratedImage = {
-                view: firstView,
-                url: firstResult.imageUrl,
-            };
-            newImages.push(firstImage);
-            if (firstResult.groundingSources) {
-              combinedSources.push(...firstResult.groundingSources);
-            }
+            newImages.push({ view: firstView, url: firstResult.imageUrl });
+            if (firstResult.groundingSources) combinedSources.push(...firstResult.groundingSources);
 
-            // 2. Generate subsequent views based on the first one for consistency
             if (config.selectedViews.length > 1) {
                 const subsequentViews = config.selectedViews.slice(1);
-                // Use Promise.all to run subsequent generations in parallel
                 const additionalImages = await Promise.all(
                     subsequentViews.map(view => 
-                        gemini.generateAdditionalView(firstImage.url, config, view)
-                            .then(url => ({ view, url }))
+                        gemini.generateAdditionalView(firstResult.imageUrl, config, view).then(url => ({ view, url }))
                     )
                 );
                 newImages.push(...additionalImages);
@@ -176,85 +267,47 @@ export const MockupView: React.FC = () => {
             setCleanBaseImages(newImages);
             setGroundingSources(uniqueSources);
             setStep('design');
-
-            return `${newImages.length} mockup view(s) generated consistently!`;
+            return `${newImages.length} mockup view(s) generated!`;
         };
         
         const promise = generationTask();
-
         toast.promise(promise, {
-            loading: 'Generating consistent mockup views with AI...',
+            loading: 'Generating consistent mockup views...',
             success: (message) => message,
             error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
         });
+        promise.catch(() => {}).finally(() => setIsLoading(false));
+    }, [config]);
 
-        promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [config, resetHistory]);
-    
-    const handleParseEasyPrompt = useCallback(async () => {
-        if (!config.easyPrompt) {
-            toast.error("Please enter a prompt first.");
-            return;
-        }
-        setIsLoading(true);
-        const promise = gemini.parseEasyPrompt(config.easyPrompt).then(parsedConfig => {
-            setConfig(prev => ({ ...prev, ...parsedConfig }));
-            return "Prompt parsed and options updated!";
-        });
-        
-        toast.promise(promise, {
-            loading: 'Parsing your prompt...',
-            success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
-        });
-        
-        promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [config.easyPrompt]);
-    
     const handleInspireMe = useCallback(async () => {
         setIsLoading(true);
-
-        // Get random values for a more varied inspiration
         const allGarments = GARMENT_CATEGORIES.flatMap(cat => cat.items);
         const allDesignStyles = DESIGN_STYLE_CATEGORIES.flatMap(cat => cat.items);
-        
         const randomGarment = allGarments[Math.floor(Math.random() * allGarments.length)];
         const randomDesignStyle = allDesignStyles[Math.floor(Math.random() * allDesignStyles.length)];
-        
-        // Extract hex code from "Color Name (#XXXXXX)"
         const randomColorString = GARMENT_COLORS[Math.floor(Math.random() * GARMENT_COLORS.length)];
         const hexMatch = randomColorString.match(/#([0-9a-fA-F]{6})/);
         const randomColor = hexMatch ? hexMatch[0] : '#000000';
 
-        const promise = gemini.generateInspirationPrompt(
-            randomGarment,
-            randomDesignStyle,
-            randomColor,
-            config.selectedStyle
-        ).then(idea => {
-            setConfig(prev => ({...prev, aiApparelPrompt: idea, useAiApparel: true}));
-            toast.info("Switched to 'Generate Custom Apparel' mode with the new idea.");
-            return `New Idea for a ${randomGarment}: "${idea}"`;
-        });
+        const promise = gemini.generateInspirationPrompt(randomGarment, randomDesignStyle, randomColor, config.selectedStyle)
+            .then(idea => {
+                setConfig(prev => ({...prev, aiApparelPrompt: idea, useAiApparel: true}));
+                toast.info("Switched to 'Generate Custom Apparel' mode.");
+                return `New Idea: "${idea}"`;
+            });
         
         toast.promise(promise, {
             loading: 'Getting an idea from the AI...',
             success: (message) => message,
             error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
         });
-        
         promise.catch(() => {}).finally(() => setIsLoading(false));
     }, [config.selectedStyle]);
 
     const isGenerationReady = useMemo(() => {
-        if (config.useAiApparel) {
-            return config.aiApparelPrompt.trim().length > 0;
-        }
+        if (config.useAiApparel) return config.aiApparelPrompt.trim().length > 0;
         return !!config.selectedGarment && config.selectedViews.length > 0;
-    }, [config.useAiApparel, config.aiApparelPrompt, config.selectedGarment, config.selectedViews]);
-
-
-    // --- Preset Logic ---
+    }, [config]);
 
     const handleSavePreset = () => {
         const name = prompt("Enter a name for this preset:");
@@ -274,7 +327,7 @@ export const MockupView: React.FC = () => {
     };
     
     const handleDeletePreset = (name: string) => {
-        if (window.confirm(`Are you sure you want to delete the preset "${name}"?`)) {
+        if (window.confirm(`Are you sure you want to delete "${name}"?`)) {
             const newPresets = { ...presets };
             delete newPresets[name];
             setPresets(newPresets);
@@ -283,62 +336,12 @@ export const MockupView: React.FC = () => {
         }
     };
 
-    // --- Layer Management ---
-    
-    const addLayer = useCallback((layer: Partial<DesignLayer>) => {
-        const newLayer: DesignLayer = {
-            id: uuidv4(),
-            type: 'image',
-            content: '',
-            position: { x: 0.5, y: 0.5 },
-            size: { width: 0.25, height: 0.25 },
-            rotation: 0,
-            opacity: 1,
-            visible: true,
-            blendMode: 'source-over',
-            lockTransparency: false,
-            ...layer,
-        };
-        setLayers(currentLayers => [...currentLayers, newLayer]);
-        setActiveLayerId(newLayer.id);
-    }, [setLayers]);
-    
-    const updateLayer = useCallback((id: string, updates: Partial<DesignLayer>) => {
-        setLayers(currentLayers =>
-            currentLayers.map(l => l.id === id ? { ...l, ...updates } : l)
-        , true); // Overwrite history for minor updates
-    }, [setLayers]);
-
-    const commitLayerUpdate = useCallback((id: string, updates: Partial<DesignLayer>) => {
-         setLayers(currentLayers =>
-            currentLayers.map(l => l.id === id ? { ...l, ...updates } : l)
-        );
-    }, [setLayers]);
-    
-    const deleteLayer = useCallback((id: string) => {
-        setLayers(currentLayers => currentLayers.filter(l => l.id !== id));
-        if (activeLayerId === id) {
-            setActiveLayerId(null);
-        }
-    }, [activeLayerId, setLayers]);
-    
-    const reorderLayer = useCallback((fromIndex: number, toIndex: number) => {
-        setLayers(currentLayers => {
-            const result = Array.from(currentLayers);
-            const [removed] = result.splice(fromIndex, 1);
-            result.splice(toIndex, 0, removed);
-            return result;
-        });
-    }, [setLayers]);
-
-    // --- Editor Panel Actions ---
-    
     const handleGenerateGraphic = useCallback(async (prompt: string, color: string, placement: string, designStyle: string, texturePrompt?: string) => {
         setIsLoading(true);
         const promise = gemini.generateGraphic(prompt, config.selectedGarment, placement, color, designStyle, texturePrompt, config.selectedModel)
             .then(imageUrl => {
-                addLayer({ type: 'image', content: imageUrl });
-                return "AI graphic generated and added as a layer!";
+                dispatch({ type: 'ADD_LAYER', payload: { type: 'image', content: imageUrl }});
+                return "AI graphic added as a new layer!";
             });
             
         toast.promise(promise, {
@@ -346,9 +349,8 @@ export const MockupView: React.FC = () => {
             success: (message) => message,
             error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
         });
-        
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [config.selectedGarment, config.selectedModel, addLayer]);
+    }, [config.selectedGarment, config.selectedModel]);
     
     const handleModifyGarment = useCallback(async (modification: ModificationRequest) => {
         if (!baseImages.length) {
@@ -357,7 +359,7 @@ export const MockupView: React.FC = () => {
         }
         setIsLoading(true);
         setFinalImage(null);
-        resetHistory([]);
+        dispatch({ type: 'RESET_STATE' });
 
         const primaryView = baseImages[0];
         
@@ -382,155 +384,87 @@ export const MockupView: React.FC = () => {
             });
             
         toast.promise(promise, {
-            loading: 'Applying direct-to-garment AI modifications...',
+            loading: 'Applying AI modifications...',
             success: (message) => message,
             error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
         });
         
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [baseImages, config, resetHistory]);
+    }, [baseImages, config]);
     
-    // --- Refine Panel Actions ---
     const handleRenderRealistic = useCallback(async () => {
         if (!baseImages.length || !layers.length) return;
         setIsLoading(true);
+        setFinalImage(null); // Clear previous final image
 
         const promise = (async () => {
             const primaryImage = baseImages[0].url;
-            const img = new Image();
-            img.src = primaryImage;
-            await new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = reject;
-            });
-
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error("Could not create canvas context");
-
-            for (const layer of layers) {
-                if (!layer.visible) continue;
-                
-                ctx.save();
-                ctx.globalAlpha = layer.opacity;
-                ctx.globalCompositeOperation = layer.blendMode as GlobalCompositeOperation;
-                
-                const layerX = layer.position.x * canvas.width;
-                const layerY = layer.position.y * canvas.height;
-                const layerWidth = layer.size.width * canvas.width;
-                
-                ctx.translate(layerX, layerY);
-                ctx.rotate(layer.rotation * Math.PI / 180);
-
-                if (layer.type === 'image' || layer.type === 'drawing') {
-                    const layerImg = new Image();
-                    layerImg.src = layer.content;
-                    await new Promise<void>((resolve, reject) => {
-                        layerImg.onload = () => resolve();
-                        layerImg.onerror = reject;
-                    });
-                    const layerHeight = layerImg.naturalHeight * (layerWidth / layerImg.naturalWidth);
-                    ctx.drawImage(layerImg, -layerWidth / 2, -layerHeight / 2, layerWidth, layerHeight);
-                }
-                
-                ctx.restore();
-            }
-
-            const flattenedGraphicUrl = canvas.toDataURL();
-            const resultUrl = await gemini.renderRealisticComposite(primaryImage, flattenedGraphicUrl);
-            setFinalImage(resultUrl);
-            setBaseImages(current => [{...current[0], url: resultUrl}, ...current.slice(1)])
+            // FIX: Call the correct function `renderDesignOnMockup` which now exists in geminiService.
+            const resultUrl = await gemini.renderDesignOnMockup(primaryImage, layers);
             
-            return "Realistic mockup rendered!";
+            // We now have the primary view rendered.
+            // We can now propagate this design to other views.
+            const sourceImage = resultUrl;
+            const sourceView = baseImages[0].view;
+            const targets = cleanBaseImages.slice(1);
+
+            let finalImages = [{ view: sourceView, url: sourceImage }];
+
+            if (targets.length > 0) {
+                 const propagatedImages = await Promise.all(
+                    targets.map(target => 
+                        gemini.propagateDesignToView(sourceImage, target.url, sourceView, target.view)
+                        .then(newUrl => ({ view: target.view, url: newUrl }))
+                    )
+                );
+                finalImages.push(...propagatedImages);
+            }
+            
+            setBaseImages(finalImages);
+            dispatch({ type: 'RESET_STATE' }); // Clear layers after rendering
+            return "Realistic mockup rendered and propagated!";
         })();
         
          toast.promise(promise, {
-            loading: 'Rendering realistic composite...',
+            loading: 'Rendering realistic composite and propagating...',
             success: (message) => message,
             error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
         });
 
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [baseImages, layers]);
-    
-     const handlePropagateDesign = useCallback(async () => {
-        if (!finalImage || cleanBaseImages.length <= 1) return;
-        setIsLoading(true);
-
-        const sourceImage = finalImage;
-        const sourceView = baseImages[0].view;
-        const targets = cleanBaseImages.slice(1);
-
-        const promise = Promise.all(
-            targets.map(target => 
-                gemini.propagateDesignToView(sourceImage, target.url, sourceView, target.view)
-                .then(newUrl => ({ view: target.view, url: newUrl }))
-            )
-        ).then(propagatedImages => {
-            const finalImages = [
-                { view: sourceView, url: sourceImage },
-                ...propagatedImages
-            ];
-            setBaseImages(finalImages);
-            setFinalImage(null); // Return to gallery view
-            return "Design propagated to all views!";
-        });
-        
-        toast.promise(promise, {
-            loading: `Propagating design to ${targets.length} other views...`,
-            success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
-        });
-
-        promise.catch(() => {}).finally(() => setIsLoading(false));
-
-    }, [finalImage, baseImages, cleanBaseImages]);
+    }, [baseImages, layers, cleanBaseImages]);
 
     const renderActivePanel = () => {
         switch(step) {
             case 'generate':
-                return <ControlPanel
-                    config={config}
-                    setConfig={setConfig}
-                    presets={presets}
-                    onSavePreset={handleSavePreset}
-                    onLoadPreset={handleLoadPreset}
-                    onDeletePreset={handleDeletePreset}
-                />;
+                return <ControlPanel 
+                            config={config} 
+                            setConfig={setConfig} 
+                            presets={presets} 
+                            onSavePreset={handleSavePreset} 
+                            onLoadPreset={handleLoadPreset} 
+                            onDeletePreset={handleDeletePreset} 
+                        />;
             case 'design':
                 return <EditorPanel
-                    layers={layers}
-                    activeLayerId={activeLayerId}
-                    onAddLayer={addLayer}
-                    onUpdateLayer={commitLayerUpdate}
-                    onDeleteLayer={deleteLayer}
-                    onReorderLayer={reorderLayer}
-                    onSetActiveLayer={setActiveLayerId}
+                    layers={layers} activeLayerId={activeLayerId}
+                    onAddLayer={(payload) => dispatch({ type: 'ADD_LAYER', payload })}
+                    onUpdateLayer={handleUpdateLayer}
+                    onDeleteLayer={(id) => dispatch({ type: 'DELETE_LAYER', payload: { id }})}
+                    onReorderLayer={(from, to) => dispatch({ type: 'REORDER_LAYER', payload: { fromIndex: from, toIndex: to }})}
+                    onSetActiveLayer={(id) => dispatch({ type: 'SET_ACTIVE_LAYER', payload: { id }})}
+                    onUndo={() => dispatch({ type: 'UNDO' as any })}
+                    onRedo={() => dispatch({ type: 'REDO' as any })}
+                    canUndo={canUndo} canRedo={canRedo}
                     onGenerateGraphic={handleGenerateGraphic}
                     onModifyGarment={handleModifyGarment}
+                    onRenderRealistic={handleRenderRealistic}
                     isLoading={isLoading}
                     garmentDescription={config.selectedGarment}
                     garmentColor={config.selectedColor}
                     designStyle={config.selectedDesignStyle}
-                    // Fix: Pass selectedStyle to EditorPanel
                     selectedStyle={config.selectedStyle}
-                    onUndo={undo}
-                    onRedo={redo}
-                    canUndo={canUndo}
-                    canRedo={canRedo}
-                    sketchTools={sketchTools}
-                    setSketchTools={setSketchTools}
-                />;
-            case 'refine':
-                return <RefinePanel
-                    onRenderRealistic={handleRenderRealistic}
-                    onPropagateDesign={handlePropagateDesign}
-                    isLoading={isLoading}
-                    finalRenderedImage={finalImage}
-                    propagationTargetCount={cleanBaseImages.length > 1 ? cleanBaseImages.length - 1 : 0}
-                    hasLayers={layers.length > 0}
+                    sketchTools={sketchTools} setSketchTools={setSketchTools}
                 />;
             default:
                 return null;
@@ -539,34 +473,22 @@ export const MockupView: React.FC = () => {
     
     return (
         <div className="flex flex-col flex-grow min-h-0">
-            {/* Tabs */}
             <div className="flex-shrink-0 bg-gray-900 flex border-b border-gray-700 shadow-md">
                 <TabButton title="1. Generate" active={step === 'generate'} onClick={() => setStep('generate')} />
                 <TabButton title="2. Design" active={step === 'design'} onClick={() => setStep('design')} disabled={baseImages.length === 0} />
-                <TabButton title="3. Refine" active={step === 'refine'} onClick={() => setStep('refine')} disabled={baseImages.length === 0} />
             </div>
 
-            {/* Main Content */}
             <div className="flex-grow grid grid-cols-1 md:grid-cols-[400px_1fr] lg:grid-cols-[450px_1fr] overflow-hidden">
-                {/* Left Column (Controls) */}
                 <div className="overflow-y-auto bg-gray-800/50">
                     {renderActivePanel()}
                 </div>
-
-                {/* Right Column (Display Area & Actions) */}
                 <div className="flex flex-col bg-gray-900">
                     <div className="flex-grow p-4 min-h-0">
                          <DisplayArea
-                            baseImages={baseImages}
-                            finalImage={finalImage}
-                            layers={layers}
-                            activeLayerId={activeLayerId}
-                            onSetActiveLayer={setActiveLayerId}
-                            onUpdateLayer={commitLayerUpdate} // Use commit for final state updates
-                            onDrawingUpdate={updateLayer} // Use update for real-time drawing
-                            groundingSources={groundingSources}
-                            sketchTools={sketchTools}
-                            isLoading={isLoading}
+                            baseImages={baseImages} finalImage={finalImage} layers={layers} activeLayerId={activeLayerId}
+                            onSetActiveLayer={(id) => dispatch({ type: 'SET_ACTIVE_LAYER', payload: { id }})}
+                            onUpdateLayer={handleUpdateLayer}
+                            groundingSources={groundingSources} sketchTools={sketchTools} isLoading={isLoading}
                         />
                     </div>
                     {step === 'generate' && (
