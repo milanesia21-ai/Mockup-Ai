@@ -1,4 +1,5 @@
 
+
 import React, { useState, useContext, useRef } from 'react';
 import { AuthContext, User } from '../contexts/AuthContext';
 import { SettingsContext } from '../contexts/SettingsContext';
@@ -59,7 +60,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ setView }) => {
             <div className="relative">
                 <div className="w-32 h-32 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
                     {user.avatar ? (
-                        <img src={user.avatar} alt="User Avatar" className="w-full h-full object-cover" />
+                        <img src={user.avatar} alt="Avatar Utente" className="w-full h-full object-cover" />
                     ) : (
                         <UserIcon className="w-20 h-20 text-gray-500 dark:text-gray-400" />
                     )}
@@ -96,7 +97,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ setView }) => {
                     </div>
                 ) : (
                     <div>
-                        <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100">{user.displayName || 'User'}</h2>
+                        <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100">{user.displayName || 'Utente'}</h2>
                         <p className="text-gray-600 dark:text-gray-400">{user.email}</p>
                         <p className="mt-2 text-gray-700 dark:text-gray-300">{user.bio || t('No bio provided.', 'Nessuna biografia fornita.')}</p>
                     </div>
@@ -117,7 +118,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ setView }) => {
         <div className="border-t border-gray-200 dark:border-gray-700 mt-8 pt-8">
             <h3 className="text-xl font-semibold mb-4">{t('Account Management', 'Gestione Account')}</h3>
             <div className="space-y-4 max-w-sm">
-                <button onClick={() => alert('Password change is not implemented in this demo.')} className="w-full text-left bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('Change Password', 'Cambia Password')}</button>
+                <button onClick={() => alert('Il cambio password non è implementato in questa demo.')} className="w-full text-left bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('Change Password', 'Cambia Password')}</button>
                 <button onClick={logout} className="w-full text-left bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('Logout', 'Esci')}</button>
                  <button onClick={deleteAccount} className="w-full text-left bg-red-500/10 text-red-500 hover:bg-red-500/20 p-3 rounded-md font-semibold">{t('Delete Account', 'Elimina Account')}</button>
             </div>

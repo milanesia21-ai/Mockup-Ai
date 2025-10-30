@@ -1,4 +1,5 @@
 
+
 import React, { useContext } from 'react';
 import { SettingsContext } from '../contexts/SettingsContext';
 
@@ -85,7 +86,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ setView }) => {
         </SettingSection>
 
         <div className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            <p>Apparel Mockup AI - Version 1.0.0</p>
+            <p>Apparel Mockup AI - Versione 1.0.0</p>
         </div>
       </div>
     </div>

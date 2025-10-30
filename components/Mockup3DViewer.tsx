@@ -1,9 +1,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GARMENT_3D_MODELS } from '../constants';
 
 interface Mockup3DViewerProps {
   imageUrl: string;
+  selectedGarment: string;
 }
 
 const LoadingOverlay: React.FC = () => (
@@ -12,11 +15,11 @@ const LoadingOverlay: React.FC = () => (
              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
-        Loading 3D Model...
+        Caricamento Modello 3D...
     </div>
 );
 
-export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl }) => {
+export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl, selectedGarment }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -28,7 +31,7 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl }) => {
     
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x52525b); // Tailwind gray-600 to match bg-gray-700
+    scene.background = new THREE.Color(0x52525b); // Tailwind gray-600
 
     const camera = new THREE.PerspectiveCamera(50, mountNode.clientWidth / mountNode.clientHeight, 0.1, 1000);
     camera.position.z = 2.5;
@@ -36,6 +39,7 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl }) => {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(mountNode.clientWidth, mountNode.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     mountNode.appendChild(renderer.domElement);
 
     // Controls
@@ -51,30 +55,72 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl }) => {
     directionalLight.position.set(5, 5, 5);
     scene.add(directionalLight);
 
-    // Texture and Material
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.load(
-      imageUrl,
-      (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        const aspectRatio = texture.image.width / texture.image.height;
-        const geometry = new THREE.PlaneGeometry(aspectRatio, 1, 32, 32);
-        const material = new THREE.MeshStandardMaterial({
-          map: texture,
-          side: THREE.DoubleSide,
-          roughness: 0.7,
-          metalness: 0.1,
+    const modelPath = GARMENT_3D_MODELS[selectedGarment];
+
+    if (!modelPath) {
+        // Fallback to plane if no 3D model is available
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.load(imageUrl, (texture) => {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            const aspectRatio = texture.image.width / texture.image.height;
+            const geometry = new THREE.PlaneGeometry(aspectRatio, 1, 32, 32);
+            const material = new THREE.MeshStandardMaterial({
+              map: texture,
+              side: THREE.DoubleSide,
+              roughness: 0.7,
+              metalness: 0.1,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+            setIsLoading(false);
+        }, undefined, (error) => {
+            console.error('An error happened loading the texture for plane fallback.', error);
+            setIsLoading(false);
         });
-        const mesh = new THREE.Mesh(geometry, material);
-        scene.add(mesh);
-        setIsLoading(false);
-      },
-      undefined,
-      (error) => {
-        console.error('An error happened loading the texture.', error);
-        setIsLoading(false);
-      }
-    );
+    } else {
+        // Load real 3D model
+        const gltfLoader = new GLTFLoader();
+        const textureLoader = new THREE.TextureLoader();
+
+        Promise.all([
+            new Promise<THREE.Texture>((resolve, reject) => textureLoader.load(imageUrl, resolve, undefined, reject)),
+            new Promise<any>((resolve, reject) => gltfLoader.load(modelPath, resolve, undefined, reject))
+        ]).then(([texture, gltf]) => {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.flipY = false;
+
+            const model = gltf.scene;
+
+            model.traverse((child) => {
+                if ((child as THREE.Mesh).isMesh) {
+                    const mesh = child as THREE.Mesh;
+                    const newMaterial = (mesh.material as THREE.MeshStandardMaterial).clone();
+                    newMaterial.map = texture;
+                    newMaterial.needsUpdate = true;
+                    mesh.material = newMaterial;
+                }
+            });
+
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            
+            model.position.x += (model.position.x - center.x);
+            model.position.y += (model.position.y - center.y);
+            model.position.z += (model.position.z - center.z);
+            
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 1.5 / maxDim;
+            model.scale.set(scale, scale, scale);
+
+            scene.add(model);
+            setIsLoading(false);
+
+        }).catch(error => {
+            console.error("Failed to load 3D model or texture:", error);
+            setIsLoading(false);
+        });
+    }
 
     // Resize handler
     const handleResize = () => {
@@ -87,7 +133,6 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl }) => {
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(mountNode);
 
-    // Animation loop
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
@@ -96,7 +141,6 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl }) => {
     };
     animate();
 
-    // Cleanup
     return () => {
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
@@ -107,7 +151,6 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl }) => {
           if (object instanceof THREE.Mesh) {
               if (object.geometry) object.geometry.dispose();
               if (object.material) {
-                  // Type guard for material array
                   if (Array.isArray(object.material)) {
                       object.material.forEach(mat => mat.dispose());
                   } else {
@@ -119,7 +162,7 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl }) => {
       controls.dispose();
       renderer.dispose();
     };
-  }, [imageUrl]);
+  }, [imageUrl, selectedGarment]);
 
   return (
     <div className="w-full h-full relative" ref={mountRef}>

@@ -1,5 +1,6 @@
 
 
+
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { 
     MockupConfig,
@@ -14,7 +15,7 @@ import {
 const API_KEY = process.env.API_KEY;
 
 if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+  throw new Error("Variabile d'ambiente API_KEY non impostata");
 }
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
@@ -38,38 +39,38 @@ function cleanAndParseJson(jsonString: string): any {
     try {
       return JSON.parse(match[0]);
     } catch (error) {
-      console.error("Failed to parse extracted JSON string:", match[0], error);
+      console.error("Impossibile analizzare la stringa JSON estratta:", match[0], error);
       // Fall through to the generic error
     }
   }
   
-  console.error("Could not find or parse JSON object in string:", jsonString);
+  console.error("Impossibile trovare o analizzare l'oggetto JSON nella stringa:", jsonString);
   // Re-throw a more specific error to be caught by the UI handler.
-  throw new Error("The AI returned an invalid data format. Please try again.");
+  throw new Error("L'IA ha restituito un formato di dati non valido. Si prega di riprovare.");
 }
 
 const getAIPersonaPrompt = (designStyle: string): string => {
     const style = designStyle.toLowerCase();
-    if (style.includes('90s grunge')) {
-        return "You are a vintage band t-shirt designer specializing in 'used' and 'distressed' looks. Think heavy flannel, faded graphics, and moody colors.";
+    if (style.includes('grunge anni \'90')) {
+        return "Sei un designer di t-shirt per band vintage specializzato in look 'usati' e 'invecchiati'. Pensa a flanella pesante, grafiche sbiadite e colori cupi.";
     }
-    if (style.includes('y2k') || style.includes('early 2000s')) {
-        return "You are a designer for a Y2K brand. Think bright colors, iridescent fabrics, 'bubble' fonts, rhinestones, and tight or cropped fits.";
+    if (style.includes('y2k') || style.includes('primi anni 2000')) {
+        return "Sei un designer per un marchio Y2K. Pensa a colori vivaci, tessuti iridescenti, font 'a bolle', strass e vestibilità aderenti o cropped.";
     }
     if (style.includes('gorpcore') || style.includes('outdoor')) {
-        return "You are a technical and functional apparel designer. Think GORE-TEX, ripstop nylon, waterproof zippers, taped seams, and a palette of natural or 'safety' colors.";
+        return "Sei un designer di abbigliamento tecnico e funzionale. Pensa a GORE-TEX, nylon ripstop, cerniere impermeabili, cuciture nastrate e una palette di colori naturali o 'di sicurezza'.";
     }
     if (style.includes('streetwear')) {
-        return "You are a modern streetwear designer. You focus on hype culture, oversized fits, bold logos, and premium materials like heavy fleece.";
+        return "Sei un moderno designer di streetwear. Ti concentri sulla cultura hype, vestibilità oversize, loghi audaci e materiali premium come il pile pesante.";
     }
     if (style.includes('cyberpunk') || style.includes('techwear')) {
-        return "You are a futuristic techwear designer. Your aesthetic involves functional straps, asymmetric cuts, technical fabrics, and a dark, dystopian color palette.";
+        return "Sei un designer di techwear futuristico. La tua estetica include cinghie funzionali, tagli asimmetrici, tessuti tecnici e una palette di colori scuri e distopici.";
     }
-    if (style.includes('minimalist')) {
-        return "You are a minimalist designer. Your focus is on clean lines, neutral color palettes, high-quality materials, and a lack of excessive branding or decoration.";
+    if (style.includes('minimalista')) {
+        return "Sei un designer minimalista. La tua attenzione è rivolta a linee pulite, palette di colori neutri, materiali di alta qualità e l'assenza di branding o decorazioni eccessive.";
     }
     // Default persona if no specific match
-    return "You are a master AI fashion photographer and designer. Your specialty is creating compelling, hyper-realistic product imagery for luxury e-commerce.";
+    return "Sei un maestro fotografo e designer di moda IA. La tua specialità è creare immagini di prodotto iperrealistiche e avvincenti per l'e-commerce di lusso.";
 };
 
 
@@ -84,32 +85,32 @@ export async function parseEasyPrompt(prompt: string): Promise<Partial<MockupCon
   ).join('\n');
 
   const finalPrompt = `
-    You are a hyper-attentive AI fashion assistant. Your primary function is to translate a user's freeform text into a precise JSON configuration. You must adhere strictly to the provided catalogs.
+    Sei un assistente di moda IA iper-attento. La tua funzione principale è tradurre il testo libero di un utente in una configurazione JSON precisa. Devi attenerti rigorosamente ai cataloghi forniti.
 
-    **User Request:** "${prompt}"
+    **Richiesta Utente:** "${prompt}"
 
-    **Available Options Catalog:**
-    **Garment Types (selectedGarment):**
+    **Catalogo Opzioni Disponibili:**
+    **Tipi di Indumento (selectedGarment):**
 ${garmentCatalog}
     
-    **Design Styles (selectedDesignStyle):**
+    **Stili di Design (selectedDesignStyle):**
 ${styleCatalog}
 
-    **Mockup Styles (selectedStyle):**
+    **Stili di Mockup (selectedStyle):**
     ${STYLE_OPTIONS.join(', ')}
 
-    **Chain-of-Thought Reasoning:**
-    1.  **Identify Explicit Keywords:** First, scan the prompt for exact or near-exact matches to items in the catalogs. An explicit mention like "denim jacket" should be prioritized.
-    2.  **Infer from Context:** If no exact match is found, analyze the descriptive language. A request for a "shirt for a 90s rock concert" strongly implies the "[90s Grunge]" design style. A "tough work shirt" implies a "Work shirt" garment type.
-    3.  **Synthesize Garment:** Determine the single best \`selectedGarment\` from the "Garment Types" catalog.
-    4.  **Synthesize Style:** Determine the single best \`selectedDesignStyle\` from the "Design Styles" catalog.
-    5.  **Extract Material:** Identify any material descriptions like "heavy cotton" or "acid wash denim". This will be the \`aiMaterialPrompt\`.
-    6.  **Extract Color:** Identify the color and convert it to a standard HEX code. "Charcoal" -> "#36454F".
-    7.  **Determine Mockup Style:** "Photo" or "realistic" maps to "Photorealistic Mockup". "Drawing" or "sketch" maps to "Technical Sketch Style". Default to "Photorealistic Mockup" if ambiguous.
-    8.  **Construct JSON:** Assemble the final JSON object. Omit any keys where a confident mapping could not be made.
+    **Ragionamento a Catena di Pensiero:**
+    1.  **Identifica Parole Chiave Esplicite:** Per prima cosa, scansiona il prompt alla ricerca di corrispondenze esatte o quasi esatte con gli elementi nei cataloghi. Una menzione esplicita come "giacca di jeans" dovrebbe avere la priorità.
+    2.  **Deduci dal Contesto:** Se non viene trovata alcuna corrispondenza esatta, analizza il linguaggio descrittivo. Una richiesta per una "maglietta per un concerto rock anni '90" implica fortemente lo stile di design "[Grunge Anni '90]". Una "camicia da lavoro resistente" implica un tipo di indumento "Camicia da lavoro".
+    3.  **Sintetizza Indumento:** Determina il singolo miglior \`selectedGarment\` dal catalogo "Tipi di Indumento".
+    4.  **Sintetizza Stile:** Determina il singolo miglior \`selectedDesignStyle\` dal catalogo "Stili di Design".
+    5.  **Estrai Materiale:** Identifica qualsiasi descrizione di materiale come "cotone pesante" o "denim acid wash". Questo sarà l'\`aiMaterialPrompt\`.
+    6.  **Estrai Colore:** Identifica il colore e convertilo in un codice esadecimale standard. "Carbone" -> "#36454F".
+    7.  **Determina Stile Mockup:** "Foto" o "realistico" mappa a "Mockup Fotorealistico". "Disegno" o "schizzo" mappa a "Stile Schizzo Tecnico". Predefinito a "Mockup Fotorealistico" se ambiguo.
+    8.  **Costruisci JSON:** Assembla l'oggetto JSON finale. Ometti qualsiasi chiave per cui non è stato possibile trovare una mappatura sicura.
 
-    **Final Output:**
-    Based on your reasoning, provide ONLY the final, valid JSON object with the keys "selectedGarment", "selectedDesignStyle", "selectedColor", "aiMaterialPrompt", "selectedStyle". Omit any keys where you couldn't find a confident match.
+    **Output Finale:**
+    Basandoti sul tuo ragionamento, fornisci SOLO l'oggetto JSON finale e valido con le chiavi "selectedGarment", "selectedDesignStyle", "selectedColor", "aiMaterialPrompt", "selectedStyle". Ometti qualsiasi chiave per cui non hai trovato una corrispondenza sicura.
   `;
   try {
     const response = await ai.models.generateContent({
@@ -133,11 +134,11 @@ ${styleCatalog}
     const jsonString = response.text.trim();
     return cleanAndParseJson(jsonString) as Partial<MockupConfig>;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("invalid data format")) {
+    if (error instanceof Error && error.message.includes("formato di dati non valido")) {
         throw error;
     }
-    console.error("Error parsing easy prompt:", error);
-    throw new Error("The AI couldn't understand that request. Please try rephrasing.");
+    console.error("Errore nell'analisi del prompt semplice:", error);
+    throw new Error("L'IA non è riuscita a capire la richiesta. Prova a riformularla.");
   }
 }
 
@@ -151,42 +152,60 @@ export async function generateMockup(
 
   let finalPrompt = '';
 
-  if (config.selectedStyle === 'Technical Sketch Style') {
+  if (config.useAiModelScene) {
+    finalPrompt = `
+      ${personaPrompt}
+      **OBIETTIVO PRINCIPALE:** Generare una singola immagine fotorealistica di un modello umano che indossa un indumento in una scena specifica.
+      
+      **Processo di Analisi e Visualizzazione (Pensa Passo-passo):**
+      1.  **Decostruzione Indumento:** Indumento: ${garmentDescription}, Vestibilità: ${config.fit}, Materiale: ${config.aiMaterialPrompt}, Colore: ${config.selectedColor}, Estetica: ${cleanDesignStyle}.
+      2.  **Visualizzazione Modello:** Il modello dovrebbe essere: "${config.aiModelPrompt}". La posa e l'espressione del modello dovrebbero corrispondere all'estetica dell'indumento.
+      3.  **Visualizzazione Scena:** La scena/sfondo dovrebbe essere: "${config.aiScenePrompt}". L'illuminazione deve essere coerente tra il modello e la scena.
+      4.  **Composizione:** Combina tutti gli elementi in una fotografia in stile e-commerce di alta moda. L'indumento è il protagonista dello scatto.
+      
+      **Regole di Esecuzione CRITICHE:**
+      - **Obiettivo:** Generare una singola immagine fotorealistica. L'output finale deve sembrare una vera fotografia.
+      - **NESSUNA Distrazione:** L'immagine finale NON deve contenere testo, etichette o watermark.
+      - **Focus sull'Indumento:** L'indumento deve essere chiaramente visibile e reso accuratamente secondo tutte le specifiche.
+      - **Vista:** Mostra l'indumento dalla vista ${view}.
+    `;
+// FIX: Changed 'Stile Schizzo Tecnico' to 'Technical Sketch Style' to match type definition.
+  } else if (config.selectedStyle === 'Technical Sketch Style') {
      finalPrompt = `
       ${personaPrompt}
-      **PRIMARY GOAL: VISUAL ONLY. NO TEXT.**
-      Your task is to generate a single, clean, 2D technical flat sketch of an apparel item. This is for a professional fashion mockup.
+      **OBIETTIVO PRINCIPALE: SOLO VISIVO. NESSUN TESTO.**
+      Il tuo compito è generare un singolo schizzo tecnico piatto e pulito in 2D di un capo di abbigliamento. Questo è per un mockup di moda professionale.
 
-      **CRITICAL INSTRUCTIONS (MUST FOLLOW):**
-      1.  **OUTPUT TYPE:** The output MUST be a 2D flat sketch (vector style).
-      2.  **BACKGROUND:** The background MUST be solid white (#FFFFFF).
-      3.  **NO TEXT:** The final image must contain ZERO text, annotations, descriptions, or labels. It must be a pure visual representation.
-      4.  **COLOR:** Fill the entire garment with this solid hex color: ${config.selectedColor}.
-      5.  **LINE STYLE:** Use clean, thin, consistent black outlines.
+      **ISTRUZIONI CRITICHE (DA SEGUIRE OBBLIGATORIAMENTE):**
+      1.  **TIPO DI OUTPUT:** L'output DEVE essere uno schizzo piatto 2D (stile vettoriale).
+      2.  **SFONDO:** Lo sfondo DEVE essere bianco solido (#FFFFFF).
+      3.  **NESSUN TESTO:** L'immagine finale deve contenere ZERO testo, annotazioni, descrizioni o etichette. Deve essere una pura rappresentazione visiva.
+      4.  **COLORE:** Riempi l'intero indumento con questo colore esadecimale solido: ${config.selectedColor}.
+      5.  **STILE LINEA:** Usa contorni neri puliti, sottili e coerenti.
 
-      **DO NOT:**
-      - Do NOT create a 3D render or photorealistic image.
-      - Do NOT add shading, gradients, or artistic effects.
-      - Do NOT include any text, numbers, or measurements.
-      - Do NOT add logos, watermarks, or any other elements besides the garment.
+      **NON FARE:**
+      - NON creare un rendering 3D o un'immagine fotorealistica.
+      - NON aggiungere ombreggiature, gradienti o effetti artistici.
+      - NON includere testo, numeri o misurazioni.
+      - NON aggiungere loghi, watermark o qualsiasi altro elemento oltre all'indumento.
 
-      **Garment Details:**
-      - **Garment to Sketch:** ${garmentDescription}
-      - **Design Aesthetic:** ${cleanDesignStyle}
-      - **Fit/Silhouette:** ${config.fit}
-      - **View:** ${view}
+      **Dettagli Indumento:**
+      - **Indumento da Disegnare:** ${garmentDescription}
+      - **Estetica del Design:** ${cleanDesignStyle}
+      - **Vestibilità/Silhouette:** ${config.fit}
+      - **Vista:** ${view}
     `;
   } else {
      finalPrompt = `
       ${personaPrompt}
-      **Analysis & Visualization Process (Think Step-by-Step):**
-      1.  **Deconstruct:** Garment: ${garmentDescription}, Fit: ${config.fit}, Material: ${config.aiMaterialPrompt}, Color: ${config.selectedColor}, Aesthetic: ${cleanDesignStyle}, View: ${view}.
-      2.  **Visualize Material:** Render the texture, sheen, and drape of "${config.aiMaterialPrompt}" accurately, influenced by the core aesthetic.
-      3.  **Visualize Style:** Translate the "${cleanDesignStyle}" aesthetic and "${config.fit}" fit into visual details (silhouette, cut, subtle cues like stitching or hardware).
-      4.  **Compose Shot:** Combine elements into a "ghost mannequin" or "flat lay" style on a neutral light gray studio background (#E0E0E0) with a soft shadow.
-      **CRITICAL Execution Rules:**
-      - **Goal:** Generate a single, photorealistic image.
-      - **NO Distractions:** The final image must NOT contain any text, labels, watermarks, hangers, props, or human figures.
+      **Processo di Analisi e Visualizzazione (Pensa Passo-passo):**
+      1.  **Decostruisci:** Indumento: ${garmentDescription}, Vestibilità: ${config.fit}, Materiale: ${config.aiMaterialPrompt}, Colore: ${config.selectedColor}, Estetica: ${cleanDesignStyle}, Vista: ${view}.
+      2.  **Visualizza Materiale:** Rendi accuratamente la texture, la lucentezza e il drappeggio di "${config.aiMaterialPrompt}", influenzato dall'estetica principale.
+      3.  **Visualizza Stile:** Traduci l'estetica "${cleanDesignStyle}" e la vestibilità "${config.fit}" in dettagli visivi (silhouette, taglio, indizi sottili come cuciture o hardware).
+      4.  **Componi lo Scatto:** Combina gli elementi in uno stile "manichino fantasma" o "flat lay" su uno sfondo da studio grigio chiaro neutro (#E0E0E0) con un'ombra morbida.
+      **Regole di Esecuzione CRITICHE:**
+      - **Obiettivo:** Generare una singola immagine fotorealistica.
+      - **NESSUNA Distrazione:** L'immagine finale NON deve contenere testo, etichette, watermark, grucce, oggetti di scena o figure umane.
     `;
   }
     
@@ -209,11 +228,11 @@ export async function generateMockup(
                 const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
                 return { imageUrl, groundingSources: [] }; // Imagen does not support grounding
             } else {
-                throw new Error("The Imagen API returned no image. Please try a different prompt or model.");
+                throw new Error("L'API di Imagen non ha restituito alcuna immagine. Prova un prompt o un modello diverso.");
             }
         } catch (error: any) {
-            console.error("Error generating with Imagen:", error);
-            throw new Error("Failed to generate mockup with Imagen. The AI may be experiencing issues.");
+            console.error("Errore durante la generazione con Imagen:", error);
+            throw new Error("Impossibile generare il mockup con Imagen. L'IA potrebbe avere problemi.");
         }
     } else {
       // Gemini Path
@@ -244,38 +263,38 @@ export async function generateMockup(
         } else {
           const candidate = response.candidates?.[0];
           const finishReason = candidate?.finishReason;
-          const finishMessage = candidate?.finishMessage || "No specific reason provided.";
+          const finishMessage = candidate?.finishMessage || "Nessun motivo specifico fornito.";
           
           switch (finishReason) {
               case 'SAFETY':
-                  throw new Error("Generation blocked due to safety policies. Please adjust your prompt.");
+                  throw new Error("Generazione bloccata a causa delle politiche di sicurezza. Modifica il tuo prompt.");
               case 'RECITATION':
-                  throw new Error("Generation blocked to prevent recitation from sources. Please rephrase your prompt.");
+                  throw new Error("Generazione bloccata per impedire la recitazione da fonti. Riformula il tuo prompt.");
               case 'OTHER':
-                    throw new Error(`Generation failed: ${finishMessage}. Please try again.`);
+                    throw new Error(`Generazione fallita: ${finishMessage}. Si prega di riprovare.`);
               default:
-                  console.error("Gemini API returned no image for mockup:", JSON.stringify(response, null, 2));
-                  throw new Error("No image was generated by the API. The response was empty.");
+                  console.error("L'API di Gemini non ha restituito alcuna immagine per il mockup:", JSON.stringify(response, null, 2));
+                  throw new Error("Nessuna immagine è stata generata dall'API. La risposta era vuota.");
           }
         }
       } catch (error: any) {
-        console.error("Error generating photorealistic mockup:", error);
+        console.error("Errore durante la generazione del mockup fotorealistico:", error);
         
         const errorMessage = error.message?.toLowerCase() || '';
 
         if (errorMessage.includes('api key not valid')) {
-            throw new Error("Invalid API Key. Please check your configuration.");
+            throw new Error("Chiave API non valida. Controlla la tua configurazione.");
         }
         if (errorMessage.includes('429') || errorMessage.includes('resource_exhausted')) {
-            throw new Error("Request limit reached. Please wait a moment and try again.");
+            throw new Error("Limite di richieste raggiunto. Attendi un momento e riprova.");
         }
         if (errorMessage.includes('400') || errorMessage.includes('invalid_argument')) {
-            throw new Error("Invalid request. The AI configuration may be incorrect.");
+            throw new Error("Richiesta non valida. La configurazione dell'IA potrebbe essere errata.");
         }
         
         // Re-throw specific errors from the try block or fall back to a generic message
         if (error?.message) throw error;
-        throw new Error("Failed to generate mockup. The AI may be experiencing issues.");
+        throw new Error("Impossibile generare il mockup. L'IA potrebbe avere problemi.");
       }
     }
 }
@@ -289,30 +308,31 @@ export async function generateAdditionalView(
   const model = 'gemini-2.5-flash-image';
   const personaPrompt = getAIPersonaPrompt(config.selectedDesignStyle);
 
+// FIX: Changed 'Stile Schizzo Tecnico' to 'Technical Sketch Style' to match type definition.
   if (config.selectedStyle === 'Technical Sketch Style') {
     promptTemplate = `
         ${personaPrompt}
-        **PRIMARY GOAL: VISUAL ONLY. NO TEXT.**
-        You are an expert AI fashion technical illustrator. The user has provided a reference sketch and needs another view.
-        Your task is to generate a 2D technical flat sketch of the {{view}} view of the EXACT SAME garment in the reference image.
+        **OBIETTIVO PRINCIPALE: SOLO VISIVO. NESSUN TESTO.**
+        Sei un esperto illustratore tecnico di moda IA. L'utente ha fornito uno schizzo di riferimento e necessita di un'altra vista.
+        Il tuo compito è generare uno schizzo tecnico piatto 2D della vista {{view}} DELLO STESSO IDENTICO indumento nell'immagine di riferimento.
 
-        **CRITICAL INSTRUCTIONS (NON-NEGOTIABLE):**
-        1.  **PERFECT CONSISTENCY:** The new sketch must perfectly match the reference's design, proportions, color, and line style.
-        2.  **OUTPUT TYPE:** The output MUST be a clean, 2D vector-style flat drawing.
-        3.  **BACKGROUND:** The background MUST be pure white (#FFFFFF).
-        4.  **NO TEXT:** The final image must contain ONLY the garment sketch. Do NOT add ANY text, labels, or annotations.
-        5.  **NO 3D/SHADING:** Do not add 3D effects, photorealism, or artistic shading.
+        **ISTRUZIONI CRITICHE (NON NEGOZIABILI):**
+        1.  **COERENZA PERFETTA:** Il nuovo schizzo deve corrispondere perfettamente al design, alle proporzioni, al colore e allo stile di linea del riferimento.
+        2.  **TIPO DI OUTPUT:** L'output DEVE essere un disegno piatto pulito in stile vettoriale 2D.
+        3.  **SFONDO:** Lo sfondo DEVE essere bianco puro (#FFFFFF).
+        4.  **NESSUN TESTO:** L'immagine finale deve contenere SOLO lo schizzo dell'indumento. NON aggiungere ALCUN testo, etichetta o annotazione.
+        5.  **NO 3D/OMBREGGIATURA:** Non aggiungere effetti 3D, fotorealismo o ombreggiature artistiche.
     `;
   } else {
     promptTemplate = `
         ${personaPrompt}
-        You are an expert AI fashion visualizer. The user has provided an image of a garment and wants to see another view of it.
-        Your task is to generate a photorealistic {{view}} view of the EXACT SAME garment shown in the provided image.
+        Sei un esperto visualizzatore di moda IA. L'utente ha fornito un'immagine di un indumento e vuole vederne un'altra vista.
+        Il tuo compito è generare una vista fotorealistica {{view}} DELLO STESSO IDENTICO indumento mostrato nell'immagine fornita.
 
-        **CRITICAL RULES:**
-        1.  **Consistency is Key:** The generated image MUST be of the same garment. Match the color, material, texture, design style, and any unique features or graphics from the reference image perfectly.
-        2.  **Maintain Style:** The new view should match the presentation style of the reference image (e.g., if it's a "ghost mannequin", the new view should also be a "ghost mannequin").
-        3.  **Output:** The output must ONLY be the image of the garment from the new perspective. Do not add text or watermarks.
+        **REGOLE CRITICHE:**
+        1.  **La Coerenza è la Chiave:** L'immagine generata DEVE essere dello stesso indumento. Corrispondi perfettamente al colore, materiale, texture, stile di design e a qualsiasi caratteristica o grafica unica dell'immagine di riferimento.
+        2.  **Mantieni lo Stile:** La nuova vista dovrebbe corrispondere allo stile di presentazione dell'immagine di riferimento (es. se è un "manichino fantasma", anche la nuova vista dovrebbe esserlo; se è su un modello, la nuova vista dovrebbe essere sullo stesso modello in una posa e ambientazione coerenti).
+        3.  **Output:** L'output deve essere SOLO l'immagine dell'indumento dalla nuova prospettiva. Non aggiungere testo o watermark.
     `;
   }
   
@@ -339,15 +359,15 @@ export async function generateAdditionalView(
     if (part?.inlineData) {
       return `data:image/png;base64,${part.inlineData.data}`;
     } else {
-      console.error(`Gemini API returned no image for additional view (${view}):`, JSON.stringify(response, null, 2));
-      throw new Error(`The AI failed to generate the ${view} view.`);
+      console.error(`L'API di Gemini non ha restituito alcuna immagine per la vista aggiuntiva (${view}):`, JSON.stringify(response, null, 2));
+      throw new Error(`L'IA non è riuscita a generare la vista ${view}.`);
     }
   } catch (error: any) {
-    console.error(`Error generating additional view (${view}):`, error);
+    console.error(`Errore durante la generazione della vista aggiuntiva (${view}):`, error);
     if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-        throw new Error("Request limit reached. Please wait a moment and try again.");
+        throw new Error("Limite di richieste raggiunto. Attendi un momento e riprova.");
     }
-    throw new Error(`Failed to generate the ${view} view. Please try again.`);
+    throw new Error(`Impossibile generare la vista ${view}. Si prega di riprovare.`);
   }
 }
 
@@ -364,18 +384,18 @@ export async function generateGraphic(
   const personaPrompt = getAIPersonaPrompt(designStyle);
   let fullPrompt = `
     ${personaPrompt}
-    Generate a single, isolated graphic asset with a transparent background. The graphic should be suitable for apparel.
+    Genera un singolo asset grafico isolato con sfondo trasparente. La grafica deve essere adatta per l'abbigliamento.
 
-    **Graphic Details:**
-    - **Description:** A graphic of "${prompt}".
-    - **Dominant Color:** Should incorporate "${color}".
-    - **Aesthetic Style:** Must match the ${designStyle} aesthetic.
-    - **Intended Use:** This will be placed on the '${placement}' of a '${garment}'. The design should be suitable for this context.
-    ${texturePrompt ? `- **Texture:** The graphic must have a visual texture of "${texturePrompt}".` : ''}
+    **Dettagli Grafica:**
+    - **Descrizione:** Una grafica di "${prompt}".
+    - **Colore Dominante:** Dovrebbe incorporare "${color}".
+    - **Stile Estetico:** Deve corrispondere all'estetica ${designStyle}.
+    - **Uso Previsto:** Sarà posizionato su '${placement}' di un '${garment}'. Il design deve essere adatto a questo contesto.
+    ${texturePrompt ? `- **Texture:** La grafica deve avere una texture visiva di "${texturePrompt}".` : ''}
 
-    **CRITICAL OUTPUT RULES:**
-    1.  **TRANSPARENT BACKGROUND:** The final image file MUST have a transparent background.
-    2.  **ISOLATED GRAPHIC ONLY:** Do NOT include the garment, shadows, or any other elements. The output must be ONLY the graphic itself.
+    **REGOLE DI OUTPUT CRITICHE:**
+    1.  **SFONDO TRASPARENTE:** Il file immagine finale DEVE avere uno sfondo trasparente.
+    2.  **SOLO GRAFICA ISOLATA:** NON includere l'indumento, ombre o qualsiasi altro elemento. L'output deve essere SOLO la grafica stessa.
   `;
   
   const finalModel = model || 'gemini-2.5-flash-image';
@@ -397,11 +417,11 @@ export async function generateGraphic(
             const base64ImageBytes = response.generatedImages[0].image.imageBytes;
             return `data:image/png;base64,${base64ImageBytes}`;
         } else {
-            throw new Error("Imagen API returned no image for graphic.");
+            throw new Error("L'API di Imagen non ha restituito alcuna immagine per la grafica.");
         }
     } catch (error: any) {
-        console.error("Error calling Imagen API for graphic generation:", error);
-        throw new Error("Failed to generate graphic with Imagen.");
+        console.error("Errore nella chiamata all'API di Imagen per la generazione di grafica:", error);
+        throw new Error("Impossibile generare la grafica con Imagen.");
     }
   } else {
     // Gemini Path
@@ -418,18 +438,18 @@ export async function generateGraphic(
       } else {
         const finishReason = response.candidates?.[0]?.finishReason;
         if (finishReason === 'SAFETY') {
-          throw new Error("The AI was unable to generate a graphic for this prompt. This can happen due to safety policies or if the request is unclear. Please try rephrasing your prompt.");
+          throw new Error("L'IA non è stata in grado di generare una grafica per questo prompt. Ciò può accadere a causa delle politiche di sicurezza o se la richiesta non è chiara. Prova a riformulare il tuo prompt.");
         }
-        console.error("Gemini API returned no image for graphic:", JSON.stringify(response, null, 2));
-        throw new Error("No graphic was generated by the API.");
+        console.error("L'API di Gemini non ha restituito alcuna immagine per la grafica:", JSON.stringify(response, null, 2));
+        throw new Error("Nessuna grafica è stata generata dall'API.");
       }
     } catch (error: any) {
-      console.error("Error calling Gemini API for graphic generation:", error);
+      console.error("Errore nella chiamata all'API di Gemini per la generazione di grafica:", error);
       if (error?.message) throw error;
       if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-          throw new Error("Request limit reached. Please wait a moment and try again.");
+          throw new Error("Limite di richieste raggiunto. Attendi un momento e riprova.");
       }
-      throw new Error("Failed to generate graphic. Please check the console for more details.");
+      throw new Error("Impossibile generare la grafica. Controlla la console per maggiori dettagli.");
     }
   }
 }
@@ -439,14 +459,14 @@ export async function generateColorPalette(
     designStyle: string
 ): Promise<string[]> {
   const prompt = `
-    You are an expert color theorist and fashion designer.
-    My garment's primary color is "${garmentColor}".
-    The design style is "${designStyle}".
+    Sei un esperto teorico del colore e stilista di moda.
+    Il colore primario del mio indumento è "${garmentColor}".
+    Lo stile di design è "${designStyle}".
 
-    Create a palette of 5 colors (including neutral and accent colors) that would complement this garment and style perfectly.
+    Crea una palette di 5 colori (inclusi colori neutri e d'accento) che si abbinino perfettamente a questo indumento e stile.
 
-    Return ONLY a JSON array of strings containing the HEX codes.
-    Example: ["#FFFFFF", "#000000", "#FFD700", "#BDB76B", "#8A2BE2"]
+    Restituisci SOLO un array JSON di stringhe contenenti i codici esadecimali.
+    Esempio: ["#FFFFFF", "#000000", "#FFD700", "#BDB76B", "#8A2BE2"]
   `;
 
   try {
@@ -466,10 +486,10 @@ export async function generateColorPalette(
     if (Array.isArray(palette) && palette.every(item => typeof item === 'string' && item.startsWith('#'))) {
         return palette as string[];
     }
-    throw new Error("AI returned an invalid palette format.");
+    throw new Error("L'IA ha restituito un formato di palette non valido.");
   } catch (error) {
-    console.error("Error generating color palette:", error);
-    throw new Error("The AI failed to suggest a color palette. Please try again.");
+    console.error("Errore durante la generazione della palette di colori:", error);
+    throw new Error("L'IA non è riuscita a suggerire una palette di colori. Si prega di riprovare.");
   }
 }
 
@@ -479,34 +499,35 @@ export async function generateInspirationPrompt(garment: string, designStyle: st
   const cacheBuster = Math.random();
   let prompt = '';
 
+// FIX: Changed 'Stile Schizzo Tecnico' to 'Technical Sketch Style' to match type definition.
   if (selectedStyle === 'Technical Sketch Style') {
     prompt = `
-      You are a master technical fashion designer creating specifications for a new garment. Your task is to brainstorm a clear, concise prompt for an AI to generate a technical sketch of a unique piece of apparel.
+      Sei un maestro designer tecnico di moda che crea specifiche per un nuovo indumento. Il tuo compito è fare brainstorming su un prompt chiaro e conciso per un'IA per generare uno schizzo tecnico di un capo di abbigliamento unico.
 
-      **Base Garment:** ${garment}
-      **Core Aesthetic:** ${designStyle}
-      **Primary Color:** ${color}
+      **Indumento Base:** ${garment}
+      **Estetica Principale:** ${designStyle}
+      **Colore Primario:** ${color}
 
-      // Cache-busting number (ignore in your response): ${cacheBuster}
+      // Numero per cache-busting (ignora nella tua risposta): ${cacheBuster}
 
-      Based on these inputs, create a short (one-sentence) but precise description focusing on **structural and functional details**. Think about unconventional seam placements, unique closures (buttons, zippers), specific pocket types, or interesting fabric manipulations (pleats, darts). **Avoid vague, artistic language.**
+      Basandoti su questi input, crea una descrizione breve (una frase) ma precisa, concentrandoti su **dettagli strutturali e funzionali**. Pensa a posizionamenti di cuciture non convenzionali, chiusure uniche (bottoni, cerniere), tipi di tasche specifici o manipolazioni interessanti del tessuto (pieghe, pinces). **Evita un linguaggio vago e artistico.**
 
-      Return ONLY the description, with no preamble or explanation.
-      Example: "A denim jacket with asymmetrical zip closure and an integrated, detachable harness system."
+      Restituisci SOLO la descrizione, senza preamboli o spiegazioni.
+      Esempio: "Una giacca di jeans con chiusura a zip asimmetrica e un sistema di imbracatura integrato e rimovibile."
     `;
   } else {
     prompt = `
-      You are a visionary creative director for an avant-garde fashion label known for breaking conventions. Your task is to brainstorm a compelling, descriptive prompt for an AI to generate a truly unique piece of apparel.
+      Sei un direttore creativo visionario per un'etichetta di moda d'avanguardia nota per rompere le convenzioni. Il tuo compito è fare brainstorming su un prompt avvincente e descrittivo per un'IA per generare un capo di abbigliamento veramente unico.
 
-      **Base Garment:** ${garment}
-      **Core Aesthetic:** ${designStyle}
-      **Primary Color:** ${color}
+      **Indumento Base:** ${garment}
+      **Estetica Principale:** ${designStyle}
+      **Colore Primario:** ${color}
 
-      // Cache-busting number (ignore in your response): ${cacheBuster}
+      // Numero per cache-busting (ignora nella tua risposta): ${cacheBuster}
 
-      Based on these inputs, create a short (one-sentence) but highly evocative and unexpected description. Think about unconventional materials, asymmetrical cuts, surprising details, or a fusion of aesthetics. **Avoid clichés and common descriptions at all costs.**
+      Basandoti su questi input, crea una descrizione breve (una frase) ma altamente evocativa e inaspettata. Pensa a materiali non convenzionali, tagli asimmetrici, dettagli sorprendenti o una fusione di estetiche. **Evita a tutti i costi cliché e descrizioni comuni.**
 
-      Return ONLY the description, with no preamble or explanation.
+      Restituisci SOLO la descrizione, senza preamboli o spiegazioni.
     `;
   }
 
@@ -521,8 +542,8 @@ export async function generateInspirationPrompt(garment: string, designStyle: st
       });
       return response.text.trim();
   } catch (error) {
-      console.error("Error generating inspiration prompt:", error);
-      throw new Error("The AI failed to generate an idea. Please try again.");
+      console.error("Errore durante la generazione del prompt di ispirazione:", error);
+      throw new Error("L'IA non è riuscita a generare un'idea. Si prega di riprovare.");
   }
 }
 
@@ -533,7 +554,7 @@ export async function renderDesignOnMockup(
 ): Promise<string> {
     const visibleLayers = layers.filter(l => l.visible);
     if (visibleLayers.length === 0) {
-        throw new Error("No visible layers were provided to render.");
+        throw new Error("Nessun livello visibile fornito per il rendering.");
     }
     const personaPrompt = getAIPersonaPrompt(designStyle);
 
@@ -558,36 +579,36 @@ export async function renderDesignOnMockup(
 
     const prompt = `
         ${personaPrompt}
-        You are a world-class AI rendering engine for apparel design. Your task is to apply a "design recipe" (a JSON array of layers) onto a base garment image to create a photorealistic final mockup.
+        Sei un motore di rendering IA di livello mondiale per il design di abbigliamento. Il tuo compito è applicare una "ricetta di design" (un array JSON di livelli) su un'immagine di indumento base per creare un mockup finale fotorealistico.
 
-        **Input Images:**
-        - The first image provided is the **Base Garment**.
-        - Subsequent images (if any) are referenced in the JSON recipe as "REFERENCE_IMAGE_1", "REFERENCE_IMAGE_2", etc.
+        **Immagini di Input:**
+        - La prima immagine fornita è l'**Indumento Base**.
+        - Le immagini successive (se presenti) sono referenziate nella ricetta JSON come "REFERENCE_IMAGE_1", "REFERENCE_IMAGE_2", ecc.
 
-        **JSON Design Recipe:**
+        **Ricetta di Design JSON:**
         \`\`\`json
         ${JSON.stringify(layerRecipe, null, 2)}
         \`\`\`
 
-        **CRITICAL Rendering Instructions:**
-        1.  **Iterate Through Layers:** Process each layer object from the JSON array in order.
-        2.  **Apply Transformations:** For each layer, apply its properties precisely:
-            -   \`position\`: Place the center of the layer at the given {x, y} percentage coordinates (0,0 is top-left, 1,1 is bottom-right).
-            -   \`size\`: Scale the layer to the given {width, height} percentage of the base garment's dimensions.
-            -   \`rotation\`: Rotate the layer by the specified degrees.
-            -   \`opacity\`: Apply the specified opacity.
-            -   \`blendMode\`: Use the specified composite operation when blending with layers below.
-        3.  **Render Content:**
-            -   If \`content\` is "REFERENCE_IMAGE_X", use the corresponding input image.
-            -   If \`type\` is "text", render the text content using its \`fontFamily\`, \`fontWeight\`, \`color\`, and \`textAlign\` properties. The text should scale to fit the layer's size.
-            -   If \`type\` is "shape", render the shape (e.g., 'rectangle', 'circle') and fill it with its \`fill\` color.
-        4.  **Photorealistic Integration (Displacement Mapping Simulation):**
-            -   **Warp & Distort:** This is the most important step. Realistically warp and distort each applied layer to follow the underlying fabric's contours, folds, wrinkles, and seams.
-            -   **Apply Lighting & Shadows:** The lighting and shadows from the Base Garment must realistically affect all applied layers.
-            -   **Mimic Texture:** Subtly blend the fabric's texture into the layers so they look printed on or woven into the material, not just pasted on top.
+        **Istruzioni di Rendering CRITICHE:**
+        1.  **Itera attraverso i Livelli:** Elabora ogni oggetto livello dall'array JSON in ordine.
+        2.  **Applica Trasformazioni:** Per ogni livello, applica le sue proprietà con precisione:
+            -   \`position\`: Posiziona il centro del livello alle coordinate percentuali {x, y} date (0,0 è in alto a sinistra, 1,1 è in basso a destra).
+            -   \`size\`: Scala il livello alle dimensioni percentuali {width, height} date rispetto alle dimensioni dell'indumento base.
+            -   \`rotation\`: Ruota il livello dei gradi specificati.
+            -   \`opacity\`: Applica l'opacità specificata.
+            -   \`blendMode\`: Usa l'operazione di compositing specificata quando si fonde con i livelli sottostanti.
+        3.  **Rendi Contenuto:**
+            -   Se \`content\` è "REFERENCE_IMAGE_X", usa l'immagine di input corrispondente.
+            -   Se \`type\` è "text", rendi il contenuto testuale usando le sue proprietà \`fontFamily\`, \`fontWeight\`, \`color\` e \`textAlign\`. Il testo dovrebbe scalare per adattarsi alla dimensione del livello.
+            -   Se \`type\` è "shape", rendi la forma (es. 'rectangle', 'circle') e riempila con il suo colore \`fill\`.
+        4.  **Integrazione Fotorealistica (Simulazione di Mappatura di Spostamento):**
+            -   **Deforma e Distorci:** Questo è il passo più importante. Deforma e distorci realisticamente ogni livello applicato per seguire i contorni, le pieghe, le grinze e le cuciture del tessuto sottostante.
+            -   **Applica Illuminazione e Ombre:** L'illuminazione e le ombre dell'Indumento Base devono influenzare realisticamente tutti i livelli applicati.
+            -   **Imita la Texture:** Miscela sottilmente la texture del tessuto nei livelli in modo che sembrino stampati o tessuti nel materiale, non semplicemente incollati sopra.
 
-        **Final Output:**
-        Return ONLY the final, single, photorealistic image of the garment with all layers from the recipe perfectly rendered and integrated. Do not add any text, labels, or watermarks.
+        **Output Finale:**
+        Restituisci SOLO l'immagine finale, singola e fotorealistica dell'indumento con tutti i livelli della ricetta perfettamente resi e integrati. Non aggiungere testo, etichette o watermark.
     `;
 
     const allParts = [{ text: prompt }, ...imageParts];
@@ -604,20 +625,20 @@ export async function renderDesignOnMockup(
         } else {
             const candidate = response.candidates?.[0];
             const finishReason = candidate?.finishReason;
-            const finishMessage = candidate?.finishMessage || "No specific reason provided.";
-            console.error("Gemini API returned no image for design mockup:", JSON.stringify(response, null, 2));
+            const finishMessage = candidate?.finishMessage || "Nessun motivo specifico fornito.";
+            console.error("L'API di Gemini non ha restituito alcuna immagine per il mockup di design:", JSON.stringify(response, null, 2));
             if (finishReason === 'SAFETY') {
-                throw new Error("Rendering was blocked due to safety policies. Please adjust your design.");
+                throw new Error("Il rendering è stato bloccato a causa delle politiche di sicurezza. Modifica il tuo design.");
             }
-            throw new Error(`The AI failed to render the design: ${finishMessage}`);
+            throw new Error(`L'IA non è riuscita a renderizzare il design: ${finishMessage}`);
         }
     } catch (error: any) {
-        console.error("Error rendering design mockup:", error);
+        console.error("Errore durante il rendering del mockup di design:", error);
         if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-            throw new Error("Request limit reached. Please wait a moment and try again.");
+            throw new Error("Limite di richieste raggiunto. Attendi un momento e riprova.");
         }
         if (error?.message) throw error;
-        throw new Error("Failed to render the design. The AI may be experiencing issues.");
+        throw new Error("Impossibile renderizzare il design. L'IA potrebbe avere problemi.");
     }
 }
 
@@ -632,19 +653,19 @@ export async function propagateDesignToView(
     const personaPrompt = getAIPersonaPrompt(designStyle);
     const prompt = `
         ${personaPrompt}
-        You are an expert AI apparel designer. You are given two images:
-        1. A garment from a specific view (${sourceViewName}) that has a design applied to it.
-        2. A clean, blank version of the SAME garment from a different view (${targetViewName}).
+        Sei un esperto designer di abbigliamento IA. Ti vengono fornite due immagini:
+        1. Un indumento da una vista specifica (${sourceViewName}) con un design applicato.
+        2. Una versione pulita e vuota DELLO STESSO indumento da una vista diversa (${targetViewName}).
 
-        Your task is to intelligently propagate the design from the first image onto the second one.
+        Il tuo compito è propagare intelligentemente il design dalla prima immagine alla seconda.
 
-        **Instructions:**
-        1. **Analyze the Design:** Identify all the graphic elements, text, and their placements on the designed ${sourceViewName} view.
-        2. **Logical Placement:** Determine where those design elements would logically appear on the ${targetViewName} view. For example, a graphic on the front of a shirt might not be visible from the back, but a sleeve graphic might wrap around and be partially visible.
-        3. **Apply and Render:** Apply the design to the clean ${targetViewName} view, ensuring it's realistically rendered, following the fabric's folds, lighting, and perspective for that new angle.
+        **Istruzioni:**
+        1. **Analizza il Design:** Identifica tutti gli elementi grafici, il testo e le loro posizioni sulla vista ${sourceViewName} con design.
+        2. **Posizionamento Logico:** Determina dove quegli elementi di design apparirebbero logicamente sulla vista ${targetViewName}. Ad esempio, una grafica sul davanti di una maglietta potrebbe non essere visibile dal retro, ma una grafica sulla manica potrebbe avvolgersi ed essere parzialmente visibile.
+        3. **Applica e Rendi:** Applica il design alla vista ${targetViewName} pulita, assicurandoti che sia reso realisticamente, seguendo le pieghe del tessuto, l'illuminazione e la prospettiva per quel nuovo angolo.
 
         **Output:**
-        Return ONLY the image of the ${targetViewName} view with the design correctly propagated.
+        Restituisci SOLO l'immagine della vista ${targetViewName} con il design correttamente propagato.
     `;
     
     const designedImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(designedViewUrl) } };
@@ -661,12 +682,12 @@ export async function propagateDesignToView(
         if (part?.inlineData) {
             return `data:image/png;base64,${part.inlineData.data}`;
         } else {
-            console.error(`Gemini API returned no image for propagating to ${targetViewName} view:`, JSON.stringify(response, null, 2));
-            throw new Error(`The AI failed to propagate the design to the ${targetViewName} view.`);
+            console.error(`L'API di Gemini non ha restituito alcuna immagine per la propagazione alla vista ${targetViewName}:`, JSON.stringify(response, null, 2));
+            throw new Error(`L'IA non è riuscita a propagare il design alla vista ${targetViewName}.`);
         }
     } catch (error) {
-        console.error(`Error propagating design to ${targetViewName} view:`, error);
-        throw new Error(`Failed to propagate the design to the ${targetViewName} view. Please try again.`);
+        console.error(`Errore durante la propagazione del design alla vista ${targetViewName}:`, error);
+        throw new Error(`Impossibile propagare il design alla vista ${targetViewName}. Si prega di riprovare.`);
     }
 }
 
@@ -678,29 +699,30 @@ export async function modifyGarmentImage(
   const personaPrompt = getAIPersonaPrompt(designStyle);
   let prompt = `
     ${personaPrompt}
-    You are an expert AI photo editor specializing in apparel. Your task is to apply a specific modification to the provided garment image. You must ONLY change what is requested and keep the rest of the image (style, lighting, background, base garment) identical.
+    Sei un esperto foto-editor IA specializzato in abbigliamento. Il tuo compito è applicare una modifica specifica all'immagine dell'indumento fornita. Devi cambiare SOLO ciò che è richiesto e mantenere identico il resto dell'immagine (stile, illuminazione, sfondo, indumento base).
 
-    **Modification Details:**
-    - **Type of Change:** ${modification.type}
-    - **Request:** "${modification.content}"
+    **Dettagli Modifica:**
+    - **Tipo di Modifica:** ${modification.type}
+    - **Richiesta:** "${modification.content}"
   `;
 
+// FIX: Changed 'Strutturale' to 'Structural' to match type definition.
   if (modification.type !== 'Structural') {
     prompt += `
-    - **Location on Garment:** ${modification.location}
-    - **Style of Modification:** ${modification.style}
+    - **Posizione sull'Indumento:** ${modification.location}
+    - **Stile della Modifica:** ${modification.style}
     `;
   } else {
      prompt += `
-    - **Style of Modification:** The modification should seamlessly blend with the existing garment's style (${modification.style}).
+    - **Stile della Modifica:** La modifica dovrebbe fondersi perfettamente con lo stile esistente dell'indumento (${modification.style}).
     `;
   }
   
   prompt += `
-    **CRITICAL RULES:**
-    1.  **Targeted Edit:** Only apply the requested change. Do not alter the garment's color, texture, fit, or the background unless explicitly told to.
-    2.  **Realism:** The modification must look photorealistic and naturally integrated with the garment's fabric, following its folds and lighting.
-    3.  **Output:** Return only the fully modified image. Do not add text or watermarks.
+    **REGOLE CRITICHE:**
+    1.  **Modifica Mirata:** Applica solo la modifica richiesta. Non alterare il colore, la texture, la vestibilità dell'indumento o lo sfondo a meno che non sia esplicitamente richiesto.
+    2.  **Realismo:** La modifica deve apparire fotorealistica e naturalmente integrata con il tessuto dell'indumento, seguendone le pieghe e l'illuminazione.
+    3.  **Output:** Restituisci solo l'immagine completamente modificata. Non aggiungere testo o watermark.
   `;
   
   const imagePart = { 
@@ -724,15 +746,15 @@ export async function modifyGarmentImage(
     if (part?.inlineData) {
       return `data:image/png;base64,${part.inlineData.data}`;
     } else {
-      console.error("Gemini API returned no image for garment modification:", JSON.stringify(response, null, 2));
-      throw new Error("The AI failed to modify the garment.");
+      console.error("L'API di Gemini non ha restituito alcuna immagine per la modifica dell'indumento:", JSON.stringify(response, null, 2));
+      throw new Error("L'IA non è riuscita a modificare l'indumento.");
     }
   } catch (error: any) {
-    console.error("Error modifying garment image:", error);
+    console.error("Errore durante la modifica dell'immagine dell'indumento:", error);
     if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-        throw new Error("Request limit reached. Please wait a moment and try again.");
+        throw new Error("Limite di richieste raggiunto. Attendi un momento e riprova.");
     }
-    throw new Error("Failed to modify the garment. The AI may be experiencing issues.");
+    throw new Error("Impossibile modificare l'indumento. L'IA potrebbe avere problemi.");
   }
 }
 
@@ -744,13 +766,13 @@ export async function applyGraphicFilter(
   let prompt = '';
   switch (filterType) {
     case 'vintage':
-      prompt = `You are an expert of vintage t-shirt printing. Take this graphic. Rerender it EXACTLY as it would appear on a 90s band t-shirt that has been washed 100 times. Apply faded colors, a subtle 'cracking' of the ink, and minimal blurring to simulate wear. The background MUST remain transparent.`;
+      prompt = `Sei un esperto di stampa di t-shirt vintage. Prendi questa grafica. Rendila ESATTAMENTE come apparirebbe su una t-shirt di una band degli anni '90 che è stata lavata 100 volte. Applica colori sbiaditi, una sottile 'screpolatura' dell'inchiostro e una minima sfocatura per simulare l'usura. Lo sfondo DEVE rimanere trasparente.`;
       break;
     case 'glitch':
-      prompt = `You are a cyberpunk digital artist. Rerender the provided graphic with a 'glitch' or 'cyber' effect. Apply digital artifacts, chromatic aberration, and scan lines. The core design should remain recognizable. The background MUST be transparent.`;
+      prompt = `Sei un artista digitale cyberpunk. Rendi la grafica fornita con un effetto 'glitch' o 'cyber'. Applica artefatti digitali, aberrazione cromatica e scan lines. Il design principale deve rimanere riconoscibile. Lo sfondo DEVE essere trasparente.`;
       break;
     case 'distress':
-      prompt = `You are a master of apparel distressing. Rerender the provided graphic as if it were printed on a shirt that has been physically distressed. Add realistic-looking rips, tears, and areas of heavy wear that affect the print. The background MUST remain transparent.`;
+      prompt = `Sei un maestro nell'invecchiamento dell'abbigliamento. Rendi la grafica fornita come se fosse stampata su una maglietta che è stata fisicamente rovinata. Aggiungi strappi, lacerazioni e aree di forte usura dall'aspetto realistico che influenzano la stampa. Lo sfondo DEVE rimanere trasparente.`;
       break;
   }
 
@@ -767,21 +789,21 @@ export async function applyGraphicFilter(
     if (part?.inlineData) {
       return `data:image/png;base64,${part.inlineData.data}`;
     } else {
-      throw new Error(`The AI failed to apply the ${filterType} filter.`);
+      throw new Error(`L'IA non è riuscita ad applicare il filtro ${filterType}.`);
     }
   } catch (error) {
-    console.error(`Error applying ${filterType} filter:`, error);
-    throw new Error(`Failed to apply the ${filterType} filter. Please try again.`);
+    console.error(`Errore nell'applicazione del filtro ${filterType}:`, error);
+    throw new Error(`Impossibile applicare il filtro ${filterType}. Si prega di riprovare.`);
   }
 }
 
 export async function generateGarmentConcept(baseGarment: string, styleA: string, styleB: string): Promise<string> {
   const prompt = `
-    Describe a hybrid apparel item. Take the base garment ('${baseGarment}') and fuse the aesthetics of '${styleA}' and '${styleB}'. 
-    Focus on structural details, materials, and unique features. 
-    Return ONLY the text description of the resulting garment. Be concise and evocative.
+    Descrivi un capo di abbigliamento ibrido. Prendi l'indumento base ('${baseGarment}') e fondi le estetiche di '${styleA}' e '${styleB}'. 
+    Concentrati sui dettagli strutturali, sui materiali e sulle caratteristiche uniche. 
+    Restituisci SOLO la descrizione testuale dell'indumento risultante. Sii conciso ed evocativo.
 
-    Example: "A minimalist pullover hoodie in matte black neoprene, featuring an asymmetric cut on the chest that reveals a cyan LED panel."
+    Esempio: "Una felpa con cappuccio minimalista in neoprene nero opaco, caratterizzata da un taglio asimmetrico sul petto che rivela un pannello LED ciano."
   `;
 
   try {
@@ -791,7 +813,7 @@ export async function generateGarmentConcept(baseGarment: string, styleA: string
       });
       return response.text.trim();
   } catch (error) {
-      console.error("Error generating garment concept:", error);
-      throw new Error("The AI failed to generate a concept. Please try again.");
+      console.error("Errore durante la generazione del concept dell'indumento:", error);
+      throw new Error("L'IA non è riuscita a generare un concept. Si prega di riprovare.");
   }
 }

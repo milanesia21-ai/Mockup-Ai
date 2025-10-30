@@ -1,4 +1,5 @@
 
+
 import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 
 type Theme = 'light' | 'dark' | 'system';
@@ -14,7 +15,7 @@ interface SettingsContextType {
 
 export const SettingsContext = createContext<SettingsContextType>({
   theme: 'system',
-  language: 'en',
+  language: 'it',
   setTheme: () => {},
   setLanguage: () => {},
   clearCache: () => {},
@@ -22,14 +23,14 @@ export const SettingsContext = createContext<SettingsContextType>({
 
 export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<Theme>('system');
-  const [language, setLanguageState] = useState<Language>('en');
+  const [language, setLanguageState] = useState<Language>('it');
 
   useEffect(() => {
     const storedTheme = localStorage.getItem('app-theme') as Theme | null;
     const storedLang = localStorage.getItem('app-lang') as Language | null;
     
     setThemeState(storedTheme || 'system');
-    setLanguageState(storedLang || 'en');
+    setLanguageState(storedLang || 'it');
   }, []);
 
   const applyTheme = useCallback((themeToApply: Theme) => {
@@ -72,7 +73,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if(lang) localStorage.setItem('app-lang', lang);
     if(user) localStorage.setItem('authUser', user);
 
-    alert('Cache cleared!');
+    alert('Cache svuotata!');
   }, []);
 
   const value = useMemo(() => ({ theme, language, setTheme, setLanguage, clearCache }), [theme, language, setTheme, setLanguage, clearCache]);

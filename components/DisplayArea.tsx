@@ -20,6 +20,7 @@ interface DisplayAreaProps {
   groundingSources: GroundingSource[];
   sketchTools: SketchToolsConfig;
   isLoading: boolean;
+  selectedGarment: string;
 }
 
 const Placeholder: React.FC = () => (
@@ -27,8 +28,8 @@ const Placeholder: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-24 w-24 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
     </svg>
-    <h3 className="mt-4 text-xl font-medium text-gray-300">Your Mockup Will Appear Here</h3>
-    <p className="mt-1 text-sm text-gray-500">Configure the options and click "Generate Mockup".</p>
+    <h3 className="mt-4 text-xl font-medium text-gray-300">Il Tuo Mockup Apparirà Qui</h3>
+    <p className="mt-1 text-sm text-gray-500">Configura le opzioni e clicca su "Genera Mockup".</p>
   </div>
 );
 
@@ -38,8 +39,8 @@ const LoadingIndicator: React.FC = () => (
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
-        <h3 className="mt-4 text-xl font-medium text-gray-300">Generating Mockup...</h3>
-        <p className="mt-1 text-sm text-gray-500">The AI is working its magic. Please wait a moment.</p>
+        <h3 className="mt-4 text-xl font-medium text-gray-300">Generazione Mockup in corso...</h3>
+        <p className="mt-1 text-sm text-gray-500">L'IA sta compiendo la sua magia. Attendi un momento.</p>
     </div>
 );
 
@@ -59,7 +60,8 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
     onUpdateLayer,
     groundingSources,
     sketchTools,
-    isLoading
+    isLoading,
+    selectedGarment
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -201,7 +203,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
 
     if (finalImage) {
       const link = document.createElement('a');
-      link.download = 'apparel-mockup-final.png';
+      link.download = 'apparel-mockup-finale.png';
       link.href = finalImage;
       link.click();
     } else {
@@ -234,7 +236,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
         ) : primaryImage && !imageError ? (
           <>
             {viewMode === '3d' ? (
-              <Mockup3DViewer imageUrl={primaryImage} />
+              <Mockup3DViewer imageUrl={primaryImage} selectedGarment={selectedGarment} />
             ) : (
               <div 
                 ref={containerRef} 
@@ -247,7 +249,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                             <div key={index} className="relative aspect-square">
                                 <img 
                                     src={image.url} 
-                                    alt={`Generated apparel mockup view ${image.view}`}
+                                    alt={`Mockup generato - vista ${image.view}`}
                                     onError={() => setImageError(true)}
                                     className="w-full h-full object-contain rounded-md"
                                 />
@@ -261,7 +263,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                     <div className="relative w-full h-full flex items-center justify-center">
                         <img 
                             src={primaryImage} 
-                            alt="Generated apparel mockup" 
+                            alt="Mockup di abbigliamento generato" 
                             className="max-w-full max-h-full object-contain rounded-md select-none"
                             onError={() => setImageError(true)}
                             data-is-base-image="true"
@@ -301,7 +303,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
               <div className="absolute bottom-4 right-4 bg-gray-900/80 backdrop-blur-sm p-3 rounded-lg max-w-xs text-xs border border-gray-700 z-20">
                 <h4 className="font-bold text-gray-200 mb-2 flex items-center gap-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-                  Enhanced with Google Search
+                  Migliorato con Ricerca Google
                 </h4>
                 <ul className="space-y-1 max-h-24 overflow-y-auto pr-2">
                   {groundingSources.map((source, index) => (
@@ -322,7 +324,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
           <button
               onClick={() => setViewMode(v => v === '2d' ? '3d' : '2d')}
               className="bg-gray-800 text-white font-bold py-3 px-5 rounded-full shadow-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-orange-500 transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"
-              aria-label={viewMode === '2d' ? "Switch to 3D View" : "Switch to 2D View"}
+              aria-label={viewMode === '2d' ? "Passa a Vista 3D" : "Passa a Vista 2D"}
           >
               {viewMode === '2d' ? <View3D className="h-5 w-5" /> : <View2D className="h-5 w-5" />}
               <span>{viewMode === '2d' ? '3D' : '2D'}</span>
@@ -330,10 +332,10 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
           <button
             onClick={handleDownload}
             className="bg-orange-600 text-white font-bold py-3 px-5 rounded-full shadow-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-orange-500 transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"
-            aria-label="Download Mockup"
+            aria-label="Scarica Mockup"
           >
             <DownloadIcon className="h-5 w-5" />
-            <span>Download</span>
+            <span>Scarica</span>
           </button>
         </div>
       )}

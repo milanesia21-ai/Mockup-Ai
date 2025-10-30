@@ -120,6 +120,115 @@ export const GARMENT_CATEGORIES: GarmentCategory[] = [
   }
 ];
 
+export const GARMENT_MATERIALS: Record<string, string[]> = {
+    // TOPS - CASUAL
+    'T-shirt basic (crew neck)': ['Pima Cotton', 'Supima Cotton', 'Jersey Knit', 'Linen Blend', 'Tri-blend (Cotton/Poly/Rayon)', 'Slub Cotton', 'Hemp Blend', 'Heavyweight Cotton'],
+    'T-shirt V-neck': ['Pima Cotton', 'Supima Cotton', 'Jersey Knit', 'Linen Blend', 'Tri-blend (Cotton/Poly/Rayon)', 'Slub Cotton', 'Modal Blend'],
+    'T-shirt long sleeve': ['Waffle Knit', 'Thermal', 'Heavyweight Cotton', 'Jersey Knit', 'Merino Wool Blend'],
+    'Henley shirt (button placket)': ['Waffle Knit', 'Slub Cotton', 'Jersey', 'Linen Blend', 'Ribbed Knit'],
+    'Tank top / A-shirt': ['Ribbed Cotton', 'Jersey Knit', 'Performance Fabric (Moisture-wicking)', 'Cotton/Elastane Blend'],
+    'Muscle shirt (athletic fit)': ['Performance Fabric (Moisture-wicking)', 'Cotton/Elastane Blend', 'Jersey', 'Mesh'],
+    
+    // TOPS - COLLARED
+    'Polo shirt (with collar and buttons)': ['Pique Knit Cotton', 'Jersey', 'Performance Polyester', 'Silk Blend', 'Linen'],
+    'Button-up shirt (dress shirt)': ['Oxford Cloth', 'Poplin', 'Twill', 'Chambray', 'Broadcloth', 'Linen', 'Dobby Weave', 'Herringbone'],
+    'Flannel shirt (casual plaid-ready)': ['Brushed Cotton Flannel', 'Wool Blend Flannel', 'Corduroy'],
+    'Denim shirt': ['Lightweight Denim', 'Chambray', 'Tencel Denim', 'Raw Denim'],
+    'Oxford shirt': ['Oxford Cloth', 'Pinpoint Oxford', 'Royal Oxford'],
+    'Work shirt': ['Heavyweight Canvas', 'Twill', 'Denim', 'Chambray', 'Ripstop'],
+
+    // TOPS - SWEATSHIRTS & HOODIES
+    'Crewneck sweatshirt': ['Fleece', 'French Terry', 'Loopback Cotton', 'Scuba Knit (Neoprene)', 'Velour'],
+    'Hoodie pullover (with kangaroo pocket)': ['Fleece', 'French Terry', 'Loopback Cotton', 'Tech Fleece', 'Sherpa Lined', 'Waffle Knit'],
+    'Zip-up hoodie (full zipper)': ['Fleece', 'French Terry', 'Loopback Cotton', 'Tech Fleece', 'Sherpa Lined'],
+    'Quarter-zip pullover': ['Fleece', 'Performance Knit', 'Waffle Knit', 'Merino Wool', 'Cable Knit'],
+    'Hoodie cropped style': ['Fleece', 'French Terry', 'Velour', 'Ribbed Knit'],
+    'Oversized sweatshirt': ['Heavyweight Fleece', 'Loopback Cotton', 'Scuba Knit (Neoprene)'],
+
+    // OUTERWEAR - JACKETS
+    'Bomber jacket': ['Nylon', 'Satin', 'Leather', 'Suede', 'Wool', 'Cotton Twill'],
+    'Denim jacket': ['Raw Denim', 'Stonewashed Denim', 'Acid Wash Denim', 'Sherpa Lined Denim', 'Stretch Denim'],
+    'Leather jacket (moto style)': ['Cowhide Leather', 'Lambskin Leather', 'Faux Leather', 'Suede'],
+    'Windbreaker': ['Nylon', 'Polyester', 'Ripstop Fabric', 'Gore-Tex Active'],
+    'Track jacket': ['Tricot (Polyester)', 'Nylon', 'Velour', 'Double-Knit'],
+    'Varsity jacket': ['Wool Body with Leather Sleeves', 'Satin', 'Fleece', 'Melton Wool'],
+    'Harrington jacket': ['Cotton Twill', 'Polyester Blend', 'Corduroy', 'Waxed Cotton'],
+    'Coach jacket': ['Nylon Taffeta', 'Polyester', 'Satin'],
+    'Trucker jacket': ['Denim', 'Corduroy', 'Canvas', 'Suede', 'Waxed Canvas'],
+
+    // OUTERWEAR - COATS & BLAZERS
+    'Parka / winter coat': ['Down-filled Nylon', 'Gore-Tex', 'Waxed Cotton', 'Wool Blend'],
+    'Puffer jacket': ['Down-filled Nylon', 'Synthetic Insulation (PrimaLoft)', 'Ripstop Polyester'],
+    'Blazer (sport coat)': ['Wool', 'Tweed', 'Linen', 'Seersucker', 'Corduroy', 'Velvet'],
+    'Suit jacket (formal)': ['Worsted Wool', 'Flannel', 'Tweed', 'Linen', 'Velvet'],
+    'Trench coat': ['Gabardine', 'Cotton Twill', 'Leather', 'Waterproof Polyester'],
+    'Peacoat': ['Melton Wool', 'Cashmere Blend'],
+    'Field jacket': ['Cotton Canvas', 'Ripstop', 'Waxed Cotton'],
+    'Anorak': ['Nylon', 'Ripstop', 'Gore-Tex', 'Ventile Cotton'],
+
+    // OUTERWEAR - VESTS
+    'Vest / Gilet (sleeveless)': ['Canvas', 'Twill', 'Fleece', 'Denim', 'Ripstop'],
+    'Puffer vest': ['Down-filled Nylon', 'Synthetic Insulation (PrimaLoft)', 'Ripstop Polyester'],
+    'Cardigan (button-up sweater)': ['Merino Wool', 'Cashmere', 'Lambswool', 'Cotton Knit', 'Cable Knit'],
+    
+    // BOTTOMS - JEANS
+    'Jeans straight fit': ['Raw Denim', 'Selvedge Denim', 'Stretch Denim', 'Stonewashed Denim'],
+    'Jeans slim fit': ['Stretch Denim', 'Lightweight Denim', 'Black Denim'],
+    'Jeans skinny fit': ['High-Stretch Denim', 'Power Stretch Denim'],
+    'Jeans relaxed/loose fit': ['Heavyweight Denim', 'Washed Denim', 'Japanese Denim'],
+    'Jeans bootcut': ['Stretch Denim', 'Classic Indigo Denim'],
+    'Distressed/ripped jeans': ['Any Denim with Distressing'],
+
+    // BOTTOMS - PANTS
+    'Chino pants (casual)': ['Cotton Twill', 'Stretch Twill', 'Brushed Cotton'],
+    'Cargo pants (with side pockets)': ['Cotton Ripstop', 'Canvas', 'Twill', 'Nylon Blend'],
+    'Joggers / sweatpants': ['Fleece', 'French Terry', 'Tech Fleece', 'Tricot'],
+    'Track pants (athletic)': ['Nylon', 'Polyester Tricot', 'Double-Knit'],
+    'Dress pants / trousers (formal)': ['Worsted Wool', 'Flannel', 'Linen', 'Cotton Sateen'],
+    'Corduroy pants': ['8-Wale Corduroy', '14-Wale Corduroy', 'Stretch Corduroy'],
+    'Work pants / Dickies style': ['Heavy-duty Twill', 'Duck Canvas'],
+    
+    // BOTTOMS - SHORTS
+    'Casual shorts (chino shorts)': ['Cotton Twill', 'Linen Blend', 'Seersucker'],
+    'Athletic shorts (gym shorts)': ['Mesh', 'Performance Polyester', 'Nylon'],
+    'Basketball shorts': ['Mesh', 'Dazzle Fabric'],
+    'Swim trunks / board shorts': ['Quick-dry Nylon', 'Polyester Microfiber'],
+    'Cargo shorts': ['Cotton Ripstop', 'Canvas', 'Twill'],
+    'Running shorts': ['Lightweight Nylon', 'Polyester with Spandex'],
+    'Denim shorts': ['Stonewashed Denim', 'Stretch Denim', 'Raw Denim'],
+
+    // ATHLETIC & SPORTSWEAR
+    'Athletic jersey (basketball/football)': ['Mesh', 'Performance Polyester', 'Dazzle Fabric'],
+    'Performance t-shirt (moisture-wicking)': ['Polyester/Spandex Blend', 'Merino Wool', 'Technical Fabric'],
+    'Compression shirt long sleeve': ['Nylon/Spandex Blend', 'Polyester/Elastane'],
+    'Sports tank top / running singlet': ['Lightweight Mesh', 'Performance Knit'],
+    'Cycling jersey': ['Lycra', 'Polyester Knit'],
+    'Training shorts': ['Performance Woven', 'Polyester Knit'],
+    'Tracksuit (jacket + pants set)': ['Tricot', 'Nylon'],
+    'Athletic tights / leggings': ['Nylon/Spandex Blend', 'Polyester/Elastane'],
+ 
+    // HEADWEAR
+    'Baseball cap curved brim (6-panel)': ['Cotton Twill', 'Wool', 'Canvas'],
+    'Snapback cap flat brim': ['Wool Blend', 'Polyester', 'Cotton Twill'],
+    'Dad hat (unstructured)': ['Washed Cotton Twill', 'Canvas'],
+    'Trucker hat (mesh back)': ['Cotton Twill Front, Nylon Mesh Back'],
+    'Beanie / knit cap': ['Merino Wool', 'Acrylic Knit', 'Cashmere', 'Ribbed Knit'],
+    'Bucket hat': ['Cotton Canvas', 'Nylon', 'Denim'],
+
+    // FOOTWEAR
+    'Sneakers low-top (athletic shoes)': ['Leather', 'Canvas', 'Suede', 'Knit Fabric', 'Mesh'],
+    'High-top sneakers': ['Leather', 'Canvas', 'Suede', 'Patent Leather'],
+    'Running shoes': ['Engineered Mesh', 'Knit Upper', 'Synthetic Overlays'],
+    'Basketball shoes': ['Leather with Synthetic Mesh', 'Knit Upper (e.g. Flyknit)'],
+    'Loafers (slip-on dress shoes)': ['Full-grain Leather', 'Suede', 'Patent Leather'],
+    'Dress shoes / oxfords': ['Calfskin Leather', 'Patent Leather', 'Suede'],
+    'Boots casual (work boots, chukka)': ['Full-grain Leather', 'Suede', 'Nubuck'],
+    'Chelsea boots': ['Suede', 'Leather'],
+    'Combat boots': ['Full-grain Leather', 'Canvas'],
+    'Slides / sandals': ['EVA Foam', 'Rubber', 'Leather'],
+};
+
+
 export const STYLE_OPTIONS = ['Photorealistic Mockup', 'Technical Sketch Style'] as const;
 export type StyleOption = typeof STYLE_OPTIONS[number];
 
@@ -271,6 +380,15 @@ export const BLEND_MODES: { name: string, value: GlobalCompositeOperation }[] = 
     { name: 'Color', value: 'color' },
     { name: 'Luminosity', value: 'luminosity' },
 ];
+
+export const GARMENT_3D_MODELS: Record<string, string> = {
+  'T-shirt basic (crew neck)': 'https://storage.googleapis.com/maker-suite-3d-models/shirt_v2.glb',
+  'Hoodie pullover (with kangaroo pocket)': 'https://storage.googleapis.com/maker-suite-3d-models/hoodie_v3.glb',
+  'Zip-up hoodie (full zipper)': 'https://storage.googleapis.com/maker-suite-3d-models/hoodie_v3.glb',
+  'Crewneck sweatshirt': 'https://storage.googleapis.com/maker-suite-3d-models/shirt_v2.glb',
+  'Bomber jacket': 'https://storage.googleapis.com/maker-suite-3d-models/bomber_v2.glb',
+  'Baseball cap curved brim (6-panel)': 'https://storage.googleapis.com/maker-suite-3d-models/cap_v2.glb',
+};
 
 
 // --- NEW DYNAMIC PROMPTS ---

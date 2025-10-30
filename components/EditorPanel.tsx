@@ -1,7 +1,6 @@
 
 
 
-
 import React, { useState, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 // FIX: Import DesignLayer from constants.ts after it was moved.
@@ -43,7 +42,7 @@ interface EditorPanelProps {
     onReorderLayer: (from: number, to: number) => void;
     onSetActiveLayer: (id: string | null) => void;
     onGenerateGraphic: (prompt: string, color: string, placement: string, designStyle: string, texturePrompt?: string) => void;
-    onModifyGarment: (modification: ModificationRequest) => void;
+    onAiEdit: (modification: ModificationRequest) => void;
     onRenderRealistic: () => void;
     isLoading: boolean;
     setIsLoading: (loading: boolean) => void;
@@ -80,7 +79,7 @@ const LoadingSpinner: React.FC = () => (
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
-        <span>Processing...</span>
+        <span>Elaborazione...</span>
     </div>
 );
 
@@ -103,7 +102,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     onReorderLayer,
     onSetActiveLayer,
     onGenerateGraphic,
-    onModifyGarment,
+    onAiEdit,
     onRenderRealistic,
     isLoading,
     setIsLoading,
@@ -124,6 +123,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const [graphicColor, setGraphicColor] = useState('#FFFFFF');
     const [graphicPlacement, setGraphicPlacement] = useState<string>('');
     const [modificationRequest, setModificationRequest] = useState<ModificationRequest>({
+        // FIX: Changed 'Strutturale' to 'Structural' to match type definition.
         type: 'Structural',
         content: '',
         location: '',
@@ -166,8 +166,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 const imageDataUrl = await fileToDataUrl(e.target.files[0]);
                 onAddLayer({ type: 'image', content: imageDataUrl });
            } catch (error) {
-                console.error("Error reading file:", error);
-                toast.error('Failed to read the file.');
+                console.error("Errore durante la lettura del file:", error);
+                toast.error('Impossibile leggere il file.');
            }
         }
         e.target.value = '';
@@ -190,12 +190,12 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         const promise = generateInspirationPrompt(randomGarment, randomDesignStyle, randomColor, selectedStyle);
 
         toast.promise(promise, {
-            loading: 'Getting an idea from the AI...',
+            loading: 'Sto ricevendo un\'idea dall\'IA...',
             success: (idea) => {
                 setGraphicPrompt(idea);
-                return 'Idea generated! ✨';
+                return 'Idea generata! ✨';
             },
-            error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
+            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
         });
 
         promise.catch(() => {}).finally(() => setIsInspiring(false));
@@ -206,12 +206,12 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         const promise = generateColorPalette(garmentColor, designStyle);
 
         toast.promise(promise, {
-            loading: 'Generating color palette...',
+            loading: 'Generazione della palette di colori...',
             success: (palette) => {
                 setSuggestedPalette(palette);
-                return 'Palette suggested! 🎨';
+                return 'Palette suggerita! 🎨';
             },
-            error: (err) => err instanceof Error ? err.message : 'Could not suggest colors.',
+            error: (err) => err instanceof Error ? err.message : 'Impossibile suggerire i colori.',
         });
 
         promise.catch(() => {}).finally(() => setIsSuggestingColors(false));
@@ -220,7 +220,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const handleVoiceInput = () => {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognition) {
-          toast.error("Speech recognition is not supported in your browser.");
+          toast.error("Il riconoscimento vocale non è supportato nel tuo browser.");
           return;
       }
 
@@ -233,25 +233,25 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
       const recognition = recognitionRef.current;
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = navigator.language || 'en-US'; // Use browser language for better accuracy
+      recognition.lang = navigator.language || 'it-IT'; // Use browser language for better accuracy
 
       recognition.onstart = () => {
           setIsRecording(true);
-          toast.info("Recording started. Speak your modification request.");
+          toast.info("Registrazione avviata. Pronuncia la tua richiesta di modifica.");
       };
 
       recognition.onend = () => {
           setIsRecording(false);
           recognitionRef.current = null;
-          toast.success("Recording stopped.");
+          toast.success("Registrazione interrotta.");
       };
 
       recognition.onerror = (event: any) => {
-          console.error("Speech recognition error", event.error);
-          let errorMessage = "An unknown error occurred.";
-          if (event.error === 'no-speech') errorMessage = "No speech was detected.";
-          else if (event.error === 'audio-capture') errorMessage = "No microphone was found.";
-          else if (event.error === 'not-allowed') errorMessage = "Microphone access was denied.";
+          console.error("Errore riconoscimento vocale", event.error);
+          let errorMessage = "Si è verificato un errore sconosciuto.";
+          if (event.error === 'no-speech') errorMessage = "Nessun discorso rilevato.";
+          else if (event.error === 'audio-capture') errorMessage = "Nessun microfono trovato.";
+          else if (event.error === 'not-allowed') errorMessage = "Accesso al microfono negato.";
           toast.error(errorMessage);
           setIsRecording(false);
       };
@@ -286,13 +286,13 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         const promise = applyGraphicFilter(activeLayer.content, filterType)
             .then(newImageUrl => {
                 onUpdateLayer(activeLayer.id, { content: newImageUrl }, true);
-                return `Successfully applied ${filterType} filter!`;
+                return `Filtro ${filterType} applicato con successo!`;
             });
 
         toast.promise(promise, {
-            loading: `Applying ${filterType} filter...`,
+            loading: `Applicazione filtro ${filterType}...`,
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
+            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
         });
         
         promise.catch(() => {}).finally(() => setIsLoading(false));
@@ -307,47 +307,47 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         {/* --- Generate Graphic --- */}
                         <div>
                           <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-lg font-semibold text-white">Generate AI Graphic</h3>
+                            <h3 className="text-lg font-semibold text-white">Genera Grafica AI</h3>
                             <button 
                               onClick={handleInspireMeClick} 
                               disabled={isLoading || isInspiring}
                               className="flex items-center gap-2 text-sm bg-orange-600/20 text-orange-300 px-3 py-2 rounded-lg hover:bg-orange-600/40 disabled:opacity-50 transition-colors"
-                              title="Let the AI suggest a design idea"
+                              title="Lascia che l'IA suggerisca un'idea di design"
                             >
                               <span>🪄</span>
-                              <span>Inspire Me</span>
+                              <span>Ispirami</span>
                             </button>
                           </div>
                           <textarea
                               value={graphicPrompt}
                               onChange={(e) => setGraphicPrompt(e.target.value)}
-                              placeholder="e.g., A retro-style phoenix, vector art"
+                              placeholder="es. Una fenice in stile retrò, arte vettoriale"
                               className="w-full h-24 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white resize-none"
                               disabled={isLoading || isInspiring}
                           />
                            <div className="mt-4">
-                              <label className="block text-sm font-medium text-gray-300 mb-1">Texture Prompt (Optional)</label>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">Prompt Texture (Opzionale)</label>
                               <input
                                   type="text"
                                   value={texturePrompt}
                                   onChange={(e) => setTexturePrompt(e.target.value)}
-                                  placeholder="e.g., embroidered patch, leather, denim"
+                                  placeholder="es. toppa ricamata, pelle, denim"
                                   className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
                                   disabled={isLoading}
                               />
                           </div>
                           <div className="grid grid-cols-2 gap-4 mt-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Placement</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Posizionamento</label>
                                 <select value={graphicPlacement} onChange={(e) => setGraphicPlacement(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3" disabled={isLoading || placementOptions.length === 0}>
                                     {placementOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <div className="flex justify-between items-center mb-1">
-                                    <label className="block text-sm font-medium text-gray-300">Color</label>
+                                    <label className="block text-sm font-medium text-gray-300">Colore</label>
                                     <button onClick={handleSuggestColors} disabled={isLoading || isSuggestingColors} className="text-xs text-orange-400 hover:underline">
-                                        {isSuggestingColors ? '...' : 'Suggest'}
+                                        {isSuggestingColors ? '...' : 'Suggerisci'}
                                     </button>
                                 </div>
                                 <input type="color" value={graphicColor} onChange={(e) => setGraphicColor(e.target.value)} className="w-full h-[38px] p-1 bg-gray-700 border-gray-600 rounded-md"/>
@@ -365,7 +365,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                               disabled={isLoading || isInspiring || !graphicPrompt || !graphicPlacement}
                               className="w-full mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50"
                           >
-                              {isLoading ? <LoadingSpinner /> : 'Generate & Add To Layers'}
+                              {isLoading ? <LoadingSpinner /> : 'Genera e Aggiungi ai Livelli'}
                           </button>
                         </div>
                         
@@ -373,25 +373,25 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
                         {/* Add Text, Shape, Sketch Layer */}
                         <div>
-                            <h3 className="text-lg font-semibold text-white mb-2">Add Basic Elements</h3>
+                            <h3 className="text-lg font-semibold text-white mb-2">Aggiungi Elementi Base</h3>
                             <div className="grid grid-cols-2 gap-2">
-                                <button onClick={() => onAddLayer({type: 'text', content: 'Hello World', fontFamily: 'Arial', fontWeight: 'normal', fontSize: 50, color: '#FFFFFF', textAlign: 'center'})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Add Text</button>
+                                <button onClick={() => onAddLayer({type: 'text', content: 'Ciao Mondo', fontFamily: 'Arial', fontWeight: 'normal', fontSize: 50, color: '#FFFFFF', textAlign: 'center'})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Aggiungi Testo</button>
                                 <button onClick={() => onAddLayer({type: 'drawing', content: '', size: {width: 1, height: 1}, position: {x: 0.5, y: 0.5}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">
-                                  Sketch Layer
+                                  Livello Schizzo
                                 </button>
-                                <button onClick={() => onAddLayer({type: 'shape', content: 'rectangle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Rectangle</button>
-                                <button onClick={() => onAddLayer({type: 'shape', content: 'circle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Circle</button>
+                                <button onClick={() => onAddLayer({type: 'shape', content: 'rectangle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Rettangolo</button>
+                                <button onClick={() => onAddLayer({type: 'shape', content: 'circle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Cerchio</button>
                             </div>
                         </div>
                         
                         {/* Upload */}
                          <div>
-                            <h3 className="text-lg font-semibold text-white">Upload Graphic</h3>
+                            <h3 className="text-lg font-semibold text-white">Carica Grafica</h3>
                              <div className="mt-2 relative border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-orange-500 transition-colors">
                                 <input type="file" id="upload-input" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileUpload} accept="image/png, image/jpeg"/>
                                 <label htmlFor="upload-input" className="cursor-pointer">
                                     <UploadIcon className="mx-auto h-8 w-8 text-gray-500" />
-                                    <p className="mt-2 text-gray-400">Click to upload</p>
+                                    <p className="mt-2 text-gray-400">Clicca per caricare</p>
                                     <p className="text-xs text-gray-500">PNG, JPG</p>
                                 </label>
                              </div>
@@ -401,27 +401,28 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
             case 'modify':
                 return (
                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">Direct-to-Garment AI</h3>
-                        <p className="text-sm text-gray-400 mb-4">Apply realistic modifications directly to the base mockup. This will regenerate all views and clear existing layers.</p>
+                        <h3 className="text-lg font-semibold text-white mb-2">Modifica AI Non Distruttiva</h3>
+                        <p className="text-sm text-gray-400 mb-4">Modifica realisticamente il mockup di base senza perdere i tuoi livelli di design. L'IA modificherà l'indumento e poi i tuoi livelli verranno riapplicati automaticamente.</p>
                         
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Modification Type</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Tipo di Modifica</label>
+                                {/* FIX: Added value attributes to match ModificationRequest['type'] and resolve type errors. */}
                                 <select value={modificationRequest.type} onChange={e => setModificationRequest(prev => ({...prev, type: e.target.value as ModificationRequest['type']}))} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3">
-                                    <option>Structural</option>
-                                    <option>Text</option>
-                                    <option>Graphic</option>
+                                    <option value="Structural">Strutturale</option>
+                                    <option value="Text">Testo</option>
+                                    <option value="Graphic">Grafica</option>
                                 </select>
                             </div>
                              <div className="relative">
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Content / Description</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Contenuto / Descrizione</label>
                                 <textarea
                                     value={modificationRequest.content}
                                     onChange={e => setModificationRequest(prev => ({...prev, content: e.target.value}))}
                                     placeholder={
-                                        modificationRequest.type === 'Structural' ? "e.g., 'add a zipper' or 'make the collar blue'" :
-                                        modificationRequest.type === 'Text' ? "e.g., 'CALIFORNIA 1982'" :
-                                        "e.g., 'a small eagle logo'"
+                                        modificationRequest.type === 'Structural' ? "es. 'aggiungi una cerniera' o 'rendi il colletto blu'" :
+                                        modificationRequest.type === 'Text' ? "es. 'CALIFORNIA 1982'" :
+                                        "es. 'un piccolo logo di un'aquila'"
                                     }
                                     className="w-full flex-grow h-20 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white resize-none"
                                     disabled={isLoading}
@@ -429,23 +430,23 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                 <button 
                                   onClick={handleVoiceInput} 
                                   className={`absolute top-8 right-2 p-2 rounded-full transition-colors ${isRecording ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600 hover:bg-gray-500'}`} 
-                                  title={isRecording ? "Stop Recording" : "Record Voice Prompt"}
+                                  title={isRecording ? "Ferma Registrazione" : "Registra Prompt Vocale"}
                                 >
                                   {isRecording ? <StopIcon/> : <MicIcon />}
                                 </button>
                             </div>
                              <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Style</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Stile</label>
                                  <input
                                     type="text"
                                     value={modificationRequest.style}
                                     onChange={e => setModificationRequest(prev => ({...prev, style: e.target.value}))}
-                                    placeholder="e.g., cracked vintage varsity font, off-white"
+                                    placeholder="es. font varsity vintage screpolato, bianco sporco"
                                     className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3"
                                 />
                             </div>
                              {modificationRequest.type !== 'Structural' && <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Location</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Posizione</label>
                                 <select
                                     value={modificationRequest.location}
                                     onChange={e => setModificationRequest(prev => ({...prev, location: e.target.value}))}
@@ -457,11 +458,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                             </div>}
                         </div>
                         <button
-                            onClick={() => onModifyGarment(modificationRequest)}
+                            onClick={() => onAiEdit(modificationRequest)}
                             disabled={isLoading || !modificationRequest.content}
                             className="w-full mt-6 bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 disabled:opacity-50"
                         >
-                            {isLoading ? <LoadingSpinner /> : 'Apply Modifications'}
+                            {isLoading ? <LoadingSpinner /> : 'Applica Modifica AI'}
                         </button>
 
                     </div>
@@ -470,32 +471,32 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 return (
                     <div className="space-y-4">
                         <div className="flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-white">Sketch Tools</h3>
+                            <h3 className="text-lg font-semibold text-white">Strumenti Schizzo</h3>
                         </div>
                         
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">Brush Type</label>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Tipo Pennello</label>
                             <div className="grid grid-cols-3 gap-2">
-                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'pencil'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'pencil' ? 'bg-orange-600' : 'bg-gray-700'}`}><PencilIcon /> Pencil</button>
-                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'pen'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'pen' ? 'bg-orange-600' : 'bg-gray-700'}`}><PenIcon /> Pen</button>
-                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'eraser'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'eraser' ? 'bg-orange-600' : 'bg-gray-700'}`}><EraserIcon /> Eraser</button>
+                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'pencil'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'pencil' ? 'bg-orange-600' : 'bg-gray-700'}`}><PencilIcon /> Matita</button>
+                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'pen'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'pen' ? 'bg-orange-600' : 'bg-gray-700'}`}><PenIcon /> Penna</button>
+                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'eraser'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'eraser' ? 'bg-orange-600' : 'bg-gray-700'}`}><EraserIcon /> Gomma</button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Brush Color</label>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Colore Pennello</label>
                             <input type="color" value={sketchTools.brushColor} onChange={e => setSketchTools(s => ({...s, brushColor: e.target.value}))} className="w-full p-1 h-10 bg-gray-700 rounded-md"/>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Brush Size ({sketchTools.brushSize}px)</label>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Dimensione Pennello ({sketchTools.brushSize}px)</label>
                             <input type="range" min="1" max="100" value={sketchTools.brushSize} onChange={e => setSketchTools(s => ({...s, brushSize: Number(e.target.value)}))} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"/>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Brush Opacity ({Math.round(sketchTools.brushOpacity * 100)}%)</label>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Opacità Pennello ({Math.round(sketchTools.brushOpacity * 100)}%)</label>
                             <input type="range" min="0" max="1" step="0.01" value={sketchTools.brushOpacity} onChange={e => setSketchTools(s => ({...s, brushOpacity: Number(e.target.value)}))} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"/>
                         </div>
                          <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">Symmetry</label>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Simmetria</label>
                             <div className="grid grid-cols-3 gap-2">
                                 <button onClick={() => setSketchTools(s => ({...s, symmetry: 'none'}))} className={`p-2 rounded-md ${sketchTools.symmetry === 'none' ? 'bg-orange-600' : 'bg-gray-700'}`}>Off</button>
                                 <button onClick={() => setSketchTools(s => ({...s, symmetry: 'vertical'}))} className={`p-2 rounded-md flex justify-center ${sketchTools.symmetry === 'vertical' ? 'bg-orange-600' : 'bg-gray-700'}`}><SymmetryYIcon /></button>
@@ -510,10 +511,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 return (
                     <div>
                       <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-semibold text-white">Layers</h3>
+                        <h3 className="text-lg font-semibold text-white">Livelli</h3>
                         <div className="flex items-center gap-2">
-                          <button onClick={onUndo} disabled={!canUndo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><UndoIcon /></button>
-                          <button onClick={onRedo} disabled={!canRedo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><RedoIcon /></button>
+                          <button onClick={onUndo} disabled={!canUndo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Annulla"><UndoIcon /></button>
+                          <button onClick={onRedo} disabled={!canRedo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Ripristina"><RedoIcon /></button>
                         </div>
                       </div>
                         {layers.length > 0 ? (
@@ -543,10 +544,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                           )}
                                           {layer.type === 'drawing' && <PencilIcon className="w-8 h-8 p-1 mr-2"/>}
                                           <span className="truncate text-sm">
-                                            {layer.type === 'drawing' ? `Sketch Layer` : 
+                                            {layer.type === 'drawing' ? `Livello Schizzo` : 
                                              layer.type === 'text' ? layer.content :
-                                             layer.type === 'shape' ? `${layer.content.charAt(0).toUpperCase() + layer.content.slice(1)} Shape` :
-                                             `Image Layer`
+                                             layer.type === 'shape' ? `${layer.content.charAt(0).toUpperCase() + layer.content.slice(1)} Forma` :
+                                             `Livello Immagine`
                                              }
                                           </span>
                                       </div>
@@ -558,7 +559,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                               )})}
                           </div>
                         ) : (
-                           <p className="text-gray-500 text-sm text-center py-4">Your design is empty. Use the 'Add' tab to add content.</p>
+                           <p className="text-gray-500 text-sm text-center py-4">Il tuo design è vuoto. Usa la scheda 'Aggiungi' per aggiungere contenuti.</p>
                         )}
                         
                         <div className="border-t border-gray-700 mt-4 pt-4">
@@ -567,26 +568,26 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                 disabled={isLoading || layers.length === 0}
                                 className="w-full bg-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
-                                {isLoading ? <LoadingSpinner /> : 'Render Realistic Mockup'}
+                                {isLoading ? <LoadingSpinner /> : 'Renderizza Mockup Realistico'}
                             </button>
-                            {layers.length === 0 && <p className="text-xs text-gray-500 text-center mt-2">Add layers to enable rendering.</p>}
+                            {layers.length === 0 && <p className="text-xs text-gray-500 text-center mt-2">Aggiungi livelli per abilitare il rendering.</p>}
                         </div>
 
                         {activeLayer && (
                             <div className="border-t border-gray-700 mt-4 pt-4 space-y-4">
-                                <h4 className="text-md font-semibold mb-2 text-white">Layer Properties</h4>
+                                <h4 className="text-md font-semibold mb-2 text-white">Proprietà Livello</h4>
                                 {activeLayer.type === 'image' && (
                                      <div className="space-y-2">
-                                        <h5 className="text-sm font-medium text-gray-300">AI Graphic Filters</h5>
+                                        <h5 className="text-sm font-medium text-gray-300">Filtri Grafici AI</h5>
                                         <div className="grid grid-cols-3 gap-2">
                                             <button onClick={() => handleApplyFilter('vintage')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Vintage '90s</button>
                                             <button onClick={() => handleApplyFilter('glitch')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Glitch/Cyber</button>
-                                            <button onClick={() => handleApplyFilter('distress')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Distress</button>
+                                            <button onClick={() => handleApplyFilter('distress')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Invecchiato</button>
                                         </div>
                                     </div>
                                 )}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Opacity ({Math.round(activeLayer.opacity * 100)}%)</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Opacità ({Math.round(activeLayer.opacity * 100)}%)</label>
                                     <input
                                         type="range"
                                         min="0"
@@ -602,25 +603,25 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                      <>
                                         <div className="grid grid-cols-2 gap-2">
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-300 mb-1">Font Family</label>
+                                                <label className="block text-sm font-medium text-gray-300 mb-1">Carattere</label>
                                                 <select value={activeLayer.fontFamily} onChange={e => onUpdateLayer(activeLayerId!, { fontFamily: e.target.value }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-sm">
                                                     {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-300 mb-1">Font Weight</label>
+                                                <label className="block text-sm font-medium text-gray-300 mb-1">Spessore Carattere</label>
                                                 <select value={activeLayer.fontWeight} onChange={e => onUpdateLayer(activeLayerId!, { fontWeight: e.target.value as any }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2">
-                                                    <option value="normal">Normal</option>
-                                                    <option value="bold">Bold</option>
+                                                    <option value="normal">Normale</option>
+                                                    <option value="bold">Grassetto</option>
                                                 </select>
                                             </div>
                                         </div>
                                          <div>
-                                            <label className="block text-sm font-medium text-gray-300 mb-1">Text Color</label>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">Colore Testo</label>
                                             <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value }, true)} className="w-full p-1 h-10 bg-gray-700 border border-gray-600 rounded-md"/>
                                         </div>
                                         <div>
-                                             <label className="block text-sm font-medium text-gray-300 mb-1">Alignment</label>
+                                             <label className="block text-sm font-medium text-gray-300 mb-1">Allineamento</label>
                                               <div className="grid grid-cols-3 gap-2">
                                                 <button onClick={() => onUpdateLayer(activeLayerId!, { textAlign: 'left' }, true)} className={`p-2 rounded-md flex justify-center ${activeLayer.textAlign === 'left' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignLeft /></button>
                                                 <button onClick={() => onUpdateLayer(activeLayerId!, { textAlign: 'center' }, true)} className={`p-2 rounded-md flex justify-center ${activeLayer.textAlign === 'center' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignCenter /></button>
@@ -631,7 +632,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                 )}
                                 {activeLayer.type === 'shape' && (
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-300 mb-1">Fill Color</label>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Colore Riempimento</label>
                                         <input 
                                             type="color" 
                                             value={activeLayer.fill} 
@@ -641,7 +642,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                     </div>
                                 )}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Blend Mode</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Metodo di Fusione</label>
                                     <select 
                                         value={activeLayer.blendMode} 
                                         onChange={(e) => onUpdateLayer(activeLayer.id, { blendMode: e.target.value }, true)} 
@@ -651,7 +652,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                     </select>
                                 </div>
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-gray-300">Lock Transparency</span>
+                                    <span className="text-sm font-medium text-gray-300">Blocca Trasparenza</span>
                                     <button
                                       type="button"
                                       className={`${ activeLayer.lockTransparency ? 'bg-orange-600' : 'bg-gray-600' } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none`}
@@ -684,10 +685,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     return (
         <div className="p-4">
             <div className="flex-shrink-0 flex items-center gap-1 p-1 bg-gray-900 rounded-lg">
-                <TabButton tab="layers" icon={<LayersIcon />} title="Layers" />
-                <TabButton tab="add" icon={<AddIcon />} title="Add" />
-                <TabButton tab="modify" icon={<MagicWandIcon />} title="AI Modify" />
-                <TabButton tab="sketch" icon={<PencilIcon />} title="Sketch" isVisible={activeLayer?.type === 'drawing'} />
+                <TabButton tab="layers" icon={<LayersIcon />} title="Livelli" />
+                <TabButton tab="add" icon={<AddIcon />} title="Aggiungi" />
+                <TabButton tab="modify" icon={<MagicWandIcon />} title="Modifica AI" />
+                <TabButton tab="sketch" icon={<PencilIcon />} title="Schizzo" isVisible={activeLayer?.type === 'drawing'} />
             </div>
             
             <div className="mt-4">

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useContext } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 
@@ -28,29 +29,29 @@ export const LoginView: React.FC = () => {
             Apparel Mockup AI
           </h1>
           <h2 className="mt-4 text-center text-2xl font-bold text-gray-900 dark:text-white">
-            {isLogin ? 'Sign in to your account' : 'Create a new account'}
+            {isLogin ? 'Accedi al tuo account' : 'Crea un nuovo account'}
           </h2>
         </div>
 
         <div className="flex justify-center gap-4">
             <button className="flex items-center justify-center w-full py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                <GoogleIcon /> Continue with Google
+                <GoogleIcon /> Continua con Google
             </button>
             <button className="flex items-center justify-center w-full py-2 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                <AppleIcon /> Continue with Apple
+                <AppleIcon /> Continua con Apple
             </button>
         </div>
 
          <div className="relative flex py-2 items-center">
             <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-            <span className="flex-shrink mx-4 text-gray-500 dark:text-gray-400">OR</span>
+            <span className="flex-shrink mx-4 text-gray-500 dark:text-gray-400">OPPURE</span>
             <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
-              <label htmlFor="email-address" className="sr-only">Email address</label>
+              <label htmlFor="email-address" className="sr-only">Indirizzo email</label>
               <input
                 id="email-address"
                 name="email"
@@ -60,7 +61,7 @@ export const LoginView: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 placeholder-gray-500 text-gray-900 dark:text-white bg-white dark:bg-gray-700 rounded-t-md focus:outline-none focus:ring-orange-500 focus:border-orange-500 focus:z-10 sm:text-sm"
-                placeholder="Email address"
+                placeholder="Indirizzo email"
               />
             </div>
             <div>
@@ -82,7 +83,7 @@ export const LoginView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="text-sm">
               <a href="#" className="font-medium text-orange-600 hover:text-orange-500">
-                Forgot your password?
+                Password dimenticata?
               </a>
             </div>
           </div>
@@ -92,13 +93,13 @@ export const LoginView: React.FC = () => {
               type="submit"
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
             >
-              {isLogin ? 'Sign in' : 'Create Account'}
+              {isLogin ? 'Accedi' : 'Crea Account'}
             </button>
           </div>
         </form>
          <div className="text-sm text-center">
             <a href="#" onClick={() => setIsLogin(!isLogin)} className="font-medium text-orange-600 hover:text-orange-500">
-              {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+              {isLogin ? "Non hai un account? Registrati" : 'Hai già un account? Accedi'}
             </a>
           </div>
       </div>
