@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, MATERIALS_BY_GARMENT_TYPE, STYLE_OPTIONS, StyleOption, VIEWS, AI_IMAGE_MODELS } from '../constants';
+import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, STYLE_OPTIONS, StyleOption, VIEWS, AI_IMAGE_MODELS, FIT_OPTIONS, TREND_PRESETS } from '../constants';
 import { toast } from 'sonner';
 import type { MockupConfig } from '../constants';
+import { MagicWand } from './Icons';
 
 interface ControlPanelProps {
   config: MockupConfig;
@@ -10,6 +11,8 @@ interface ControlPanelProps {
   onSavePreset: () => void;
   onLoadPreset: (name: string) => void;
   onDeletePreset: (name: string) => void;
+  onLoadTrendPreset: (preset: string) => void;
+  onGenerateGarmentConcept: (styleA: string, styleB: string) => Promise<void>;
 }
 
 const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className }) => {
@@ -63,6 +66,63 @@ const StopIcon: React.FC = () => (
     </svg>
 );
 
+const StyleMixerModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onGenerate: (styleA: string, styleB: string) => void;
+    isLoading: boolean;
+}> = ({ isOpen, onClose, onGenerate, isLoading }) => {
+    const [styleA, setStyleA] = useState(DESIGN_STYLE_CATEGORIES[0].items[0]);
+    const [styleB, setStyleB] = useState(DESIGN_STYLE_CATEGORIES[0].items[1]);
+    
+    if (!isOpen) return null;
+
+    const handleSubmit = () => {
+        if (styleA === styleB) {
+            toast.error("Please select two different styles to mix.");
+            return;
+        }
+        onGenerate(styleA, styleB);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-bold text-orange-400 mb-4">AI Garment Mixer</h3>
+                <p className="text-sm text-gray-400 mb-6">Select two styles to hybridize into a new garment concept. The AI will generate a description for you.</p>
+                <div className="space-y-4">
+                     <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Style A</label>
+                        <select value={styleA} onChange={(e) => setStyleA(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
+                            {DESIGN_STYLE_CATEGORIES.map(category => (
+                                <optgroup key={category.name} label={category.name}>
+                                    {category.items.map(item => <option key={item} value={item}>{item}</option>)}
+                                </optgroup>
+                            ))}
+                        </select>
+                    </div>
+                     <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Style B</label>
+                        <select value={styleB} onChange={(e) => setStyleB(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
+                             {DESIGN_STYLE_CATEGORIES.map(category => (
+                                <optgroup key={category.name} label={category.name}>
+                                    {category.items.map(item => <option key={item} value={item}>{item}</option>)}
+                                </optgroup>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+                <div className="mt-6 flex justify-end gap-2">
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-600 rounded-md hover:bg-gray-500">Cancel</button>
+                    <button onClick={handleSubmit} disabled={isLoading} className="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50">
+                        {isLoading ? 'Generating...' : 'Generate Concept'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   config,
@@ -71,62 +131,42 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onSavePreset,
   onLoadPreset,
   onDeletePreset,
+  onLoadTrendPreset,
+  onGenerateGarmentConcept,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const presetSelectRef = useRef<HTMLSelectElement>(null);
   const [isRecording, setIsRecording] = useState<false | 'easy' | 'apparel'>(false);
+  const [isMixerOpen, setIsMixerOpen] = useState(false);
+  const [isGeneratingConcept, setIsGeneratingConcept] = useState(false);
   const recognitionRef = useRef<any>(null); // Using 'any' for SpeechRecognition for cross-browser compatibility
 
   const handleConfigChange = (key: keyof MockupConfig, value: any) => {
     setConfig(prev => ({...prev, [key]: value}));
   };
+
+  // FIX: Define the missing `handleViewToggle` function.
+  const handleViewToggle = (view: string) => {
+    setConfig(prev => {
+      const newViews = prev.selectedViews.includes(view)
+        ? prev.selectedViews.filter(v => v !== view)
+        : [...prev.selectedViews, view];
+      return { ...prev, selectedViews: newViews };
+    });
+  };
   
   const handleCategoryChange = (category: string) => {
     const newItems = GARMENT_CATEGORIES.find(cat => cat.name === category)?.items || [];
-    const newMaterials = MATERIALS_BY_GARMENT_TYPE[category] || [];
     setConfig(prev => ({
         ...prev,
         selectedCategory: category,
         selectedGarment: newItems[0] || '',
-        selectedMaterial: newMaterials[0] || '',
     }));
   };
 
-  const handleGarmentChange = (newGarment: string) => {
-    // To provide better user feedback, we reset the material to the category's default when the garment type changes.
-    const materialOptionsForCategory = MATERIALS_BY_GARMENT_TYPE[config.selectedCategory] || [];
-    setConfig(prev => ({
-      ...prev,
-      selectedGarment: newGarment,
-      selectedMaterial: materialOptionsForCategory[0] || '',
-    }));
-  };
-
-  const handleViewToggle = (view: string) => {
-    const newViews = config.selectedViews.includes(view)
-      ? config.selectedViews.filter(v => v !== view)
-      : [...config.selectedViews, view];
-    handleConfigChange('selectedViews', newViews);
-  };
-  
   const garmentItems = useMemo(() => {
     const category = GARMENT_CATEGORIES.find(cat => cat.name === config.selectedCategory);
     return category ? category.items : [];
   }, [config.selectedCategory]);
-
-  const materialOptions = useMemo(() => {
-    return MATERIALS_BY_GARMENT_TYPE[config.selectedCategory] || [];
-  }, [config.selectedCategory]);
-
-  const handlePresetLoad = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const presetName = e.target.value;
-    if (presetName) {
-      onLoadPreset(presetName);
-      if (presetSelectRef.current) {
-        presetSelectRef.current.value = ''; // Reset dropdown to placeholder
-      }
-    }
-  };
 
   const handleTextureUploadClick = () => {
     fileInputRef.current?.click();
@@ -146,7 +186,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           reader.onloadend = () => {
               const dataUrl = reader.result as string;
               handleConfigChange('customMaterialTexture', dataUrl);
-              handleConfigChange('selectedMaterial', `Custom: ${file.name.substring(0, 20)}...`);
+              handleConfigChange('aiMaterialPrompt', `Custom texture: ${file.name.substring(0, 20)}...`);
               toast.success("Custom texture uploaded!");
           };
           reader.readAsDataURL(file);
@@ -215,11 +255,36 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       recognition.start();
   };
 
+    const handleGenerateConcept = async (styleA: string, styleB: string) => {
+        setIsGeneratingConcept(true);
+        await onGenerateGarmentConcept(styleA, styleB);
+        setIsGeneratingConcept(false);
+        setIsMixerOpen(false);
+    };
+
   const isImagenModel = config.selectedModel.startsWith('imagen');
   const isSearchDisabled = !!config.customMaterialTexture || isImagenModel;
 
   return (
     <div className="p-4 space-y-4">
+        <StyleMixerModal 
+            isOpen={isMixerOpen}
+            onClose={() => setIsMixerOpen(false)}
+            onGenerate={handleGenerateConcept}
+            isLoading={isGeneratingConcept}
+        />
+        <div className="bg-gray-800 rounded-lg p-4 shadow-lg">
+             <label className="block text-lg font-bold text-orange-400 mb-2">Trend Presets</label>
+             <select 
+                onChange={(e) => onLoadTrendPreset(e.target.value)} 
+                className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500"
+                defaultValue=""
+             >
+                <option value="" disabled>Load a Trend Preset...</option>
+                {TREND_PRESETS.map(preset => <option key={preset} value={preset}>{preset}</option>)}
+            </select>
+        </div>
+
         {/* Card 1: Define Garment */}
         <Card title="Define Garment">
              <ToggleSwitch 
@@ -260,18 +325,29 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-1">Type</label>
-                        <select value={config.selectedGarment} onChange={(e) => handleGarmentChange(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
+                        <select value={config.selectedGarment} onChange={(e) => handleConfigChange('selectedGarment', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
                            {garmentItems.map(item => <option key={item} value={item}>{item}</option>)}
                         </select>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">Material</label>
-                        <select value={config.selectedMaterial} onChange={(e) => handleConfigChange('selectedMaterial', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500" disabled={materialOptions.length === 0 || !!config.customMaterialTexture}>
-                            {materialOptions.map(item => <option key={item} value={item}>{item}</option>)}
+                     <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Fit</label>
+                        <select value={config.fit} onChange={(e) => handleConfigChange('fit', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
+                           {FIT_OPTIONS.map(item => <option key={item} value={item}>{item}</option>)}
                         </select>
                     </div>
                 </>
             )}
+            <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">AI Material Prompt</label>
+                 <input
+                    type="text"
+                    value={config.aiMaterialPrompt}
+                    onChange={(e) => handleConfigChange('aiMaterialPrompt', e.target.value)}
+                    placeholder="e.g., Heavy 'used' fleece, acid wash denim"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500"
+                    disabled={!!config.customMaterialTexture}
+                />
+            </div>
              <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Color</label>
                 <input type="color" value={config.selectedColor} onChange={(e) => handleConfigChange('selectedColor', e.target.value)} className="w-full h-10 p-1 bg-gray-700 border-gray-600 rounded-md"/>
@@ -280,15 +356,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         {/* Card 2: Define Style */}
         <Card title="Define Style">
-             <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Design Style</label>
-                <select value={config.selectedDesignStyle} onChange={(e) => handleConfigChange('selectedDesignStyle', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
-                    {DESIGN_STYLE_CATEGORIES.map(category => (
-                        <optgroup key={category.name} label={category.name}>
-                            {category.items.map(item => <option key={item} value={item}>{item}</option>)}
-                        </optgroup>
-                    ))}
-                </select>
+             <div className="flex items-center gap-2">
+                <div className="flex-grow">
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Design Style</label>
+                    <select value={config.selectedDesignStyle} onChange={(e) => handleConfigChange('selectedDesignStyle', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
+                        {DESIGN_STYLE_CATEGORIES.map(category => (
+                            <optgroup key={category.name} label={category.name}>
+                                {category.items.map(item => <option key={item} value={item}>{item}</option>)}
+                            </optgroup>
+                        ))}
+                    </select>
+                </div>
+                <button onClick={() => setIsMixerOpen(true)} title="Mix Styles with AI" className="self-end p-2 bg-gray-700 hover:bg-gray-600 rounded-md">
+                    <MagicWand className="h-5 w-5"/>
+                </button>
             </div>
             <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Mockup Style</label>
@@ -310,11 +391,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 {config.customMaterialTexture && (
                     <div className="mt-2 flex items-center gap-2 p-2 bg-gray-900/50 rounded-md">
                         <img src={config.customMaterialTexture} alt="Custom texture preview" className="w-10 h-10 object-cover rounded"/>
-                        <p className="text-xs text-gray-300 flex-grow truncate">{config.selectedMaterial}</p>
+                        <p className="text-xs text-gray-300 flex-grow truncate">{config.aiMaterialPrompt}</p>
                         <button 
                           onClick={() => {
                             handleConfigChange('customMaterialTexture', undefined);
-                            handleConfigChange('selectedMaterial', materialOptions[0] || '');
+                            handleConfigChange('aiMaterialPrompt', 'Fleece');
                           }} 
                           className="text-red-500 hover:text-red-400 font-bold text-lg"
                           title="Remove custom texture"

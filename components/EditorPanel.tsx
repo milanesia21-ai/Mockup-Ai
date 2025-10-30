@@ -2,11 +2,11 @@
 
 
 
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 // FIX: Import DesignLayer from constants.ts after it was moved.
 import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS, BLEND_MODES, ModificationRequest, GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, DesignLayer } from '../constants';
-import { generateInspirationPrompt, generateColorPalette } from '../services/geminiService';
+import { generateInspirationPrompt, generateColorPalette, applyGraphicFilter } from '../services/geminiService';
 import { 
     Undo as UndoIcon, 
     Redo as RedoIcon,
@@ -46,6 +46,7 @@ interface EditorPanelProps {
     onModifyGarment: (modification: ModificationRequest) => void;
     onRenderRealistic: () => void;
     isLoading: boolean;
+    setIsLoading: (loading: boolean) => void;
     garmentDescription: string;
     garmentColor: string;
     designStyle: string;
@@ -105,6 +106,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     onModifyGarment,
     onRenderRealistic,
     isLoading,
+    setIsLoading,
     garmentDescription,
     garmentColor,
     designStyle,
@@ -146,7 +148,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         return garmentKey ? GARMENT_PART_PLACEMENTS[garmentKey] : [];
     }, [garmentDescription]);
     
-    useEffect(() => {
+    useMemo(() => {
         if (placementOptions.length > 0) {
             if (!placementOptions.includes(graphicPlacement)) {
                 setGraphicPlacement(placementOptions[0]);
@@ -275,6 +277,25 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         }
         dragItem.current = null;
         dragOverItem.current = null;
+    };
+
+    const handleApplyFilter = (filterType: 'vintage' | 'glitch' | 'distress') => {
+        if (!activeLayer || activeLayer.type !== 'image' || !activeLayer.content) return;
+        
+        setIsLoading(true);
+        const promise = applyGraphicFilter(activeLayer.content, filterType)
+            .then(newImageUrl => {
+                onUpdateLayer(activeLayer.id, { content: newImageUrl }, true);
+                return `Successfully applied ${filterType} filter!`;
+            });
+
+        toast.promise(promise, {
+            loading: `Applying ${filterType} filter...`,
+            success: (message) => message,
+            error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
+        });
+        
+        promise.catch(() => {}).finally(() => setIsLoading(false));
     };
 
 
@@ -554,6 +575,16 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         {activeLayer && (
                             <div className="border-t border-gray-700 mt-4 pt-4 space-y-4">
                                 <h4 className="text-md font-semibold mb-2 text-white">Layer Properties</h4>
+                                {activeLayer.type === 'image' && (
+                                     <div className="space-y-2">
+                                        <h5 className="text-sm font-medium text-gray-300">AI Graphic Filters</h5>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <button onClick={() => handleApplyFilter('vintage')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Vintage '90s</button>
+                                            <button onClick={() => handleApplyFilter('glitch')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Glitch/Cyber</button>
+                                            <button onClick={() => handleApplyFilter('distress')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Distress</button>
+                                        </div>
+                                    </div>
+                                )}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-300 mb-1">Opacity ({Math.round(activeLayer.opacity * 100)}%)</label>
                                     <input

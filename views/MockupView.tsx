@@ -28,7 +28,8 @@ const DEFAULT_CONFIG: MockupConfig = {
     selectedGarment: 'Hoodie pullover (with kangaroo pocket)',
     selectedDesignStyle: '[Streetwear]',
     selectedColor: '#1a1a1a',
-    selectedMaterial: 'Fleece',
+    aiMaterialPrompt: 'Heavy fleece',
+    fit: 'Regular',
     selectedStyle: 'Photorealistic Mockup',
     selectedViews: ['Front'],
     aiApparelPrompt: '',
@@ -363,7 +364,7 @@ export const MockupView: React.FC = () => {
 
         const primaryView = baseImages[0];
         
-        const promise = gemini.modifyGarmentImage(primaryView.url, modification)
+        const promise = gemini.modifyGarmentImage(primaryView.url, modification, config.selectedDesignStyle)
             .then(async (modifiedImageUrl) => {
                 const newBaseImages = [{ ...primaryView, url: modifiedImageUrl }];
 
@@ -399,11 +400,8 @@ export const MockupView: React.FC = () => {
 
         const promise = (async () => {
             const primaryImage = baseImages[0].url;
-            // FIX: Call the correct function `renderDesignOnMockup` which now exists in geminiService.
-            const resultUrl = await gemini.renderDesignOnMockup(primaryImage, layers);
+            const resultUrl = await gemini.renderDesignOnMockup(primaryImage, layers, config.selectedDesignStyle);
             
-            // We now have the primary view rendered.
-            // We can now propagate this design to other views.
             const sourceImage = resultUrl;
             const sourceView = baseImages[0].view;
             const targets = cleanBaseImages.slice(1);
@@ -413,7 +411,7 @@ export const MockupView: React.FC = () => {
             if (targets.length > 0) {
                  const propagatedImages = await Promise.all(
                     targets.map(target => 
-                        gemini.propagateDesignToView(sourceImage, target.url, sourceView, target.view)
+                        gemini.propagateDesignToView(sourceImage, target.url, sourceView, target.view, config.selectedDesignStyle)
                         .then(newUrl => ({ view: target.view, url: newUrl }))
                     )
                 );
@@ -432,7 +430,87 @@ export const MockupView: React.FC = () => {
         });
 
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [baseImages, layers, cleanBaseImages]);
+    }, [baseImages, layers, cleanBaseImages, config.selectedDesignStyle]);
+    
+    const handleLoadTrendPreset = (preset: string) => {
+        let newConfig: Partial<MockupConfig> = {};
+        switch (preset) {
+            case "90s Grunge Tee":
+                newConfig = {
+                    selectedCategory: 'TOPS - CASUAL',
+                    selectedGarment: 'T-shirt basic (crew neck)',
+                    selectedDesignStyle: '[90s Grunge]',
+                    fit: 'Oversized / Baggy',
+                    aiMaterialPrompt: "Heavyweight 'vintage' faded black cotton",
+                    selectedColor: '#2a2a2a',
+                };
+                break;
+            case "Y2K Juicy":
+                 newConfig = {
+                    selectedCategory: 'TOPS - SWEATSHIRTS & HOODIES',
+                    selectedGarment: 'Zip-up hoodie (full zipper)',
+                    selectedDesignStyle: '[Y2K/Early 2000s]',
+                    fit: 'Cropped',
+                    aiMaterialPrompt: "Velour fabric",
+                    selectedColor: '#ff69b4', // Hot Pink
+                };
+                break;
+             case "Gorpcore Tech":
+                 newConfig = {
+                    selectedCategory: 'OUTERWEAR - JACKETS',
+                    selectedGarment: 'Anorak',
+                    selectedDesignStyle: '[Gorpcore/Outdoor]',
+                    fit: 'Regular',
+                    aiMaterialPrompt: "Waterproof ripstop nylon with taped seams",
+                    selectedColor: '#808000', // Olive
+                };
+                break;
+            case "Minimalist Streetwear":
+                 newConfig = {
+                    selectedCategory: 'TOPS - SWEATSHIRTS & HOODIES',
+                    selectedGarment: 'Crewneck sweatshirt',
+                    selectedDesignStyle: '[Minimalist/Normcore]',
+                    fit: 'Oversized / Baggy',
+                    aiMaterialPrompt: "Premium heavy loopback cotton",
+                    selectedColor: '#e5e5e5', // Light grey
+                };
+                break;
+             case "Darkwear Utility":
+                 newConfig = {
+                    selectedCategory: 'OUTERWEAR - VESTS',
+                    selectedGarment: 'Vest / Gilet (sleeveless)',
+                    selectedDesignStyle: '[Cyberpunk/Techwear]',
+                    fit: 'Regular',
+                    aiMaterialPrompt: "Matte black technical canvas with multiple pockets and straps",
+                    selectedColor: '#1a1a1a',
+                };
+                break;
+        }
+        setConfig(prev => ({ ...prev, ...newConfig, useAiApparel: false }));
+        toast.success(`Loaded "${preset}" preset!`);
+    };
+    
+    const handleGenerateGarmentConcept = async (styleA: string, styleB: string) => {
+        const promise = gemini.generateGarmentConcept(config.selectedGarment, styleA, styleB)
+            .then(concept => {
+                setConfig(prev => ({
+                    ...prev,
+                    aiApparelPrompt: concept,
+                    useAiApparel: true,
+                    selectedDesignStyle: styleA, // Prioritize style A for persona
+                }));
+                return "AI concept generated and loaded!";
+            });
+        
+        toast.promise(promise, {
+            loading: 'AI is brainstorming...',
+            success: (message) => message,
+            error: (err) => err instanceof Error ? err.message : 'An unknown error occurred.',
+        });
+
+        await promise;
+    };
+
 
     const renderActivePanel = () => {
         switch(step) {
@@ -443,7 +521,9 @@ export const MockupView: React.FC = () => {
                             presets={presets} 
                             onSavePreset={handleSavePreset} 
                             onLoadPreset={handleLoadPreset} 
-                            onDeletePreset={handleDeletePreset} 
+                            onDeletePreset={handleDeletePreset}
+                            onLoadTrendPreset={handleLoadTrendPreset}
+                            onGenerateGarmentConcept={handleGenerateGarmentConcept}
                         />;
             case 'design':
                 return <EditorPanel
@@ -460,6 +540,7 @@ export const MockupView: React.FC = () => {
                     onModifyGarment={handleModifyGarment}
                     onRenderRealistic={handleRenderRealistic}
                     isLoading={isLoading}
+                    setIsLoading={setIsLoading}
                     garmentDescription={config.selectedGarment}
                     garmentColor={config.selectedColor}
                     designStyle={config.selectedDesignStyle}

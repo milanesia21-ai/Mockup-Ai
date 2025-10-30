@@ -6,7 +6,6 @@ import {
     ModificationRequest,
     GARMENT_CATEGORIES,
     DESIGN_STYLE_CATEGORIES,
-    MATERIALS_BY_GARMENT_TYPE,
     STYLE_OPTIONS,
     DesignLayer,
 } from '../constants';
@@ -49,6 +48,31 @@ function cleanAndParseJson(jsonString: string): any {
   throw new Error("The AI returned an invalid data format. Please try again.");
 }
 
+const getAIPersonaPrompt = (designStyle: string): string => {
+    const style = designStyle.toLowerCase();
+    if (style.includes('90s grunge')) {
+        return "You are a vintage band t-shirt designer specializing in 'used' and 'distressed' looks. Think heavy flannel, faded graphics, and moody colors.";
+    }
+    if (style.includes('y2k') || style.includes('early 2000s')) {
+        return "You are a designer for a Y2K brand. Think bright colors, iridescent fabrics, 'bubble' fonts, rhinestones, and tight or cropped fits.";
+    }
+    if (style.includes('gorpcore') || style.includes('outdoor')) {
+        return "You are a technical and functional apparel designer. Think GORE-TEX, ripstop nylon, waterproof zippers, taped seams, and a palette of natural or 'safety' colors.";
+    }
+    if (style.includes('streetwear')) {
+        return "You are a modern streetwear designer. You focus on hype culture, oversized fits, bold logos, and premium materials like heavy fleece.";
+    }
+    if (style.includes('cyberpunk') || style.includes('techwear')) {
+        return "You are a futuristic techwear designer. Your aesthetic involves functional straps, asymmetric cuts, technical fabrics, and a dark, dystopian color palette.";
+    }
+    if (style.includes('minimalist')) {
+        return "You are a minimalist designer. Your focus is on clean lines, neutral color palettes, high-quality materials, and a lack of excessive branding or decoration.";
+    }
+    // Default persona if no specific match
+    return "You are a master AI fashion photographer and designer. Your specialty is creating compelling, hyper-realistic product imagery for luxury e-commerce.";
+};
+
+
 export async function parseEasyPrompt(prompt: string): Promise<Partial<MockupConfig>> {
   // Build the context for the AI
   const garmentCatalog = GARMENT_CATEGORIES.map(cat => 
@@ -58,8 +82,6 @@ export async function parseEasyPrompt(prompt: string): Promise<Partial<MockupCon
   const styleCatalog = DESIGN_STYLE_CATEGORIES.map(cat => 
     `- ${cat.name}: ${cat.items.join(', ')}`
   ).join('\n');
-
-  const uniqueMaterials = [...new Set(Object.values(MATERIALS_BY_GARMENT_TYPE).flat())].join(', ');
 
   const finalPrompt = `
     You are a hyper-attentive AI fashion assistant. Your primary function is to translate a user's freeform text into a precise JSON configuration. You must adhere strictly to the provided catalogs.
@@ -73,24 +95,21 @@ ${garmentCatalog}
     **Design Styles (selectedDesignStyle):**
 ${styleCatalog}
 
-    **Materials (selectedMaterial):**
-    ${uniqueMaterials}
-
     **Mockup Styles (selectedStyle):**
     ${STYLE_OPTIONS.join(', ')}
 
     **Chain-of-Thought Reasoning:**
     1.  **Identify Explicit Keywords:** First, scan the prompt for exact or near-exact matches to items in the catalogs. An explicit mention like "denim jacket" should be prioritized.
-    2.  **Infer from Context:** If no exact match is found, analyze the descriptive language. A request for a "shirt for a 90s rock concert" strongly implies the "[90s Grunge]" design style. A "tough work shirt" implies a "Work shirt" garment type and "Canvas" or "Twill" material.
+    2.  **Infer from Context:** If no exact match is found, analyze the descriptive language. A request for a "shirt for a 90s rock concert" strongly implies the "[90s Grunge]" design style. A "tough work shirt" implies a "Work shirt" garment type.
     3.  **Synthesize Garment:** Determine the single best \`selectedGarment\` from the "Garment Types" catalog.
     4.  **Synthesize Style:** Determine the single best \`selectedDesignStyle\` from the "Design Styles" catalog.
-    5.  **Synthesize Material:** Determine the single best \`selectedMaterial\` from the "Materials" catalog, considering what is appropriate for the chosen garment.
+    5.  **Extract Material:** Identify any material descriptions like "heavy cotton" or "acid wash denim". This will be the \`aiMaterialPrompt\`.
     6.  **Extract Color:** Identify the color and convert it to a standard HEX code. "Charcoal" -> "#36454F".
     7.  **Determine Mockup Style:** "Photo" or "realistic" maps to "Photorealistic Mockup". "Drawing" or "sketch" maps to "Technical Sketch Style". Default to "Photorealistic Mockup" if ambiguous.
     8.  **Construct JSON:** Assemble the final JSON object. Omit any keys where a confident mapping could not be made.
 
     **Final Output:**
-    Based on your reasoning, provide ONLY the final, valid JSON object with the keys "selectedGarment", "selectedDesignStyle", "selectedColor", "selectedMaterial", "selectedStyle". Omit any keys where you couldn't find a confident match.
+    Based on your reasoning, provide ONLY the final, valid JSON object with the keys "selectedGarment", "selectedDesignStyle", "selectedColor", "aiMaterialPrompt", "selectedStyle". Omit any keys where you couldn't find a confident match.
   `;
   try {
     const response = await ai.models.generateContent({
@@ -104,7 +123,7 @@ ${styleCatalog}
             selectedGarment: { type: Type.STRING },
             selectedDesignStyle: { type: Type.STRING },
             selectedColor: { type: Type.STRING },
-            selectedMaterial: { type: Type.STRING },
+            aiMaterialPrompt: { type: Type.STRING },
             selectedStyle: { type: Type.STRING },
           }
         },
@@ -128,11 +147,13 @@ export async function generateMockup(
 ): Promise<{ imageUrl: string; groundingSources: GroundingSource[] }> {
   const garmentDescription = config.useAiApparel ? config.aiApparelPrompt : config.selectedGarment;
   const cleanDesignStyle = config.selectedDesignStyle.replace(/\[|\]/g, '');
+  const personaPrompt = getAIPersonaPrompt(config.selectedDesignStyle);
 
   let finalPrompt = '';
 
   if (config.selectedStyle === 'Technical Sketch Style') {
      finalPrompt = `
+      ${personaPrompt}
       **PRIMARY GOAL: VISUAL ONLY. NO TEXT.**
       Your task is to generate a single, clean, 2D technical flat sketch of an apparel item. This is for a professional fashion mockup.
 
@@ -152,15 +173,16 @@ export async function generateMockup(
       **Garment Details:**
       - **Garment to Sketch:** ${garmentDescription}
       - **Design Aesthetic:** ${cleanDesignStyle}
+      - **Fit/Silhouette:** ${config.fit}
       - **View:** ${view}
     `;
   } else {
      finalPrompt = `
-      You are a master AI fashion photographer. Your specialty is creating compelling, hyper-realistic product imagery for luxury e-commerce.
+      ${personaPrompt}
       **Analysis & Visualization Process (Think Step-by-Step):**
-      1.  **Deconstruct:** Garment: ${garmentDescription}, Material: ${config.selectedMaterial}, Color: ${config.selectedColor}, Aesthetic: ${cleanDesignStyle}, View: ${view}.
-      2.  **Visualize Material:** Render the texture, sheen, and drape of "${config.selectedMaterial}" accurately.
-      3.  **Visualize Style:** Translate the "${cleanDesignStyle}" aesthetic into visual details (silhouette, fit, subtle cues).
+      1.  **Deconstruct:** Garment: ${garmentDescription}, Fit: ${config.fit}, Material: ${config.aiMaterialPrompt}, Color: ${config.selectedColor}, Aesthetic: ${cleanDesignStyle}, View: ${view}.
+      2.  **Visualize Material:** Render the texture, sheen, and drape of "${config.aiMaterialPrompt}" accurately, influenced by the core aesthetic.
+      3.  **Visualize Style:** Translate the "${cleanDesignStyle}" aesthetic and "${config.fit}" fit into visual details (silhouette, cut, subtle cues like stitching or hardware).
       4.  **Compose Shot:** Combine elements into a "ghost mannequin" or "flat lay" style on a neutral light gray studio background (#E0E0E0) with a soft shadow.
       **CRITICAL Execution Rules:**
       - **Goal:** Generate a single, photorealistic image.
@@ -265,9 +287,11 @@ export async function generateAdditionalView(
 ): Promise<string> {
   let promptTemplate: string;
   const model = 'gemini-2.5-flash-image';
+  const personaPrompt = getAIPersonaPrompt(config.selectedDesignStyle);
 
   if (config.selectedStyle === 'Technical Sketch Style') {
     promptTemplate = `
+        ${personaPrompt}
         **PRIMARY GOAL: VISUAL ONLY. NO TEXT.**
         You are an expert AI fashion technical illustrator. The user has provided a reference sketch and needs another view.
         Your task is to generate a 2D technical flat sketch of the {{view}} view of the EXACT SAME garment in the reference image.
@@ -281,6 +305,7 @@ export async function generateAdditionalView(
     `;
   } else {
     promptTemplate = `
+        ${personaPrompt}
         You are an expert AI fashion visualizer. The user has provided an image of a garment and wants to see another view of it.
         Your task is to generate a photorealistic {{view}} view of the EXACT SAME garment shown in the provided image.
 
@@ -336,14 +361,15 @@ export async function generateGraphic(
     texturePrompt?: string,
     model: string = 'gemini-2.5-flash-image'
 ): Promise<string> {
-
+  const personaPrompt = getAIPersonaPrompt(designStyle);
   let fullPrompt = `
+    ${personaPrompt}
     Generate a single, isolated graphic asset with a transparent background. The graphic should be suitable for apparel.
 
     **Graphic Details:**
     - **Description:** A graphic of "${prompt}".
     - **Dominant Color:** Should incorporate "${color}".
-    - **Aesthetic Style:** Must match the [${designStyle}] aesthetic.
+    - **Aesthetic Style:** Must match the ${designStyle} aesthetic.
     - **Intended Use:** This will be placed on the '${placement}' of a '${garment}'. The design should be suitable for this context.
     ${texturePrompt ? `- **Texture:** The graphic must have a visual texture of "${texturePrompt}".` : ''}
 
@@ -502,12 +528,14 @@ export async function generateInspirationPrompt(garment: string, designStyle: st
 
 export async function renderDesignOnMockup(
   baseGarmentUrl: string,
-  layers: DesignLayer[]
+  layers: DesignLayer[],
+  designStyle: string
 ): Promise<string> {
     const visibleLayers = layers.filter(l => l.visible);
     if (visibleLayers.length === 0) {
         throw new Error("No visible layers were provided to render.");
     }
+    const personaPrompt = getAIPersonaPrompt(designStyle);
 
     const imageParts: { inlineData: { mimeType: string; data: string } }[] = [];
     const layerRecipe: Partial<DesignLayer>[] = [];
@@ -529,6 +557,7 @@ export async function renderDesignOnMockup(
     });
 
     const prompt = `
+        ${personaPrompt}
         You are a world-class AI rendering engine for apparel design. Your task is to apply a "design recipe" (a JSON array of layers) onto a base garment image to create a photorealistic final mockup.
 
         **Input Images:**
@@ -597,9 +626,12 @@ export async function propagateDesignToView(
     designedViewUrl: string,
     cleanTargetViewUrl: string,
     sourceViewName: string,
-    targetViewName: string
+    targetViewName: string,
+    designStyle: string
 ): Promise<string> {
+    const personaPrompt = getAIPersonaPrompt(designStyle);
     const prompt = `
+        ${personaPrompt}
         You are an expert AI apparel designer. You are given two images:
         1. A garment from a specific view (${sourceViewName}) that has a design applied to it.
         2. A clean, blank version of the SAME garment from a different view (${targetViewName}).
@@ -640,9 +672,12 @@ export async function propagateDesignToView(
 
 export async function modifyGarmentImage(
   baseImageUrl: string,
-  modification: ModificationRequest
+  modification: ModificationRequest,
+  designStyle: string,
 ): Promise<string> {
+  const personaPrompt = getAIPersonaPrompt(designStyle);
   let prompt = `
+    ${personaPrompt}
     You are an expert AI photo editor specializing in apparel. Your task is to apply a specific modification to the provided garment image. You must ONLY change what is requested and keep the rest of the image (style, lighting, background, base garment) identical.
 
     **Modification Details:**
@@ -698,5 +733,65 @@ export async function modifyGarmentImage(
         throw new Error("Request limit reached. Please wait a moment and try again.");
     }
     throw new Error("Failed to modify the garment. The AI may be experiencing issues.");
+  }
+}
+
+
+export async function applyGraphicFilter(
+  imageUrl: string,
+  filterType: 'vintage' | 'glitch' | 'distress'
+): Promise<string> {
+  let prompt = '';
+  switch (filterType) {
+    case 'vintage':
+      prompt = `You are an expert of vintage t-shirt printing. Take this graphic. Rerender it EXACTLY as it would appear on a 90s band t-shirt that has been washed 100 times. Apply faded colors, a subtle 'cracking' of the ink, and minimal blurring to simulate wear. The background MUST remain transparent.`;
+      break;
+    case 'glitch':
+      prompt = `You are a cyberpunk digital artist. Rerender the provided graphic with a 'glitch' or 'cyber' effect. Apply digital artifacts, chromatic aberration, and scan lines. The core design should remain recognizable. The background MUST be transparent.`;
+      break;
+    case 'distress':
+      prompt = `You are a master of apparel distressing. Rerender the provided graphic as if it were printed on a shirt that has been physically distressed. Add realistic-looking rips, tears, and areas of heavy wear that affect the print. The background MUST remain transparent.`;
+      break;
+  }
+
+  const imagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(imageUrl) } };
+  const textPart = { text: prompt };
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: { parts: [imagePart, textPart] },
+      config: { responseModalities: [Modality.IMAGE] },
+    });
+    const part = response.candidates?.[0]?.content?.parts?.[0];
+    if (part?.inlineData) {
+      return `data:image/png;base64,${part.inlineData.data}`;
+    } else {
+      throw new Error(`The AI failed to apply the ${filterType} filter.`);
+    }
+  } catch (error) {
+    console.error(`Error applying ${filterType} filter:`, error);
+    throw new Error(`Failed to apply the ${filterType} filter. Please try again.`);
+  }
+}
+
+export async function generateGarmentConcept(baseGarment: string, styleA: string, styleB: string): Promise<string> {
+  const prompt = `
+    Describe a hybrid apparel item. Take the base garment ('${baseGarment}') and fuse the aesthetics of '${styleA}' and '${styleB}'. 
+    Focus on structural details, materials, and unique features. 
+    Return ONLY the text description of the resulting garment. Be concise and evocative.
+
+    Example: "A minimalist pullover hoodie in matte black neoprene, featuring an asymmetric cut on the chest that reveals a cyan LED panel."
+  `;
+
+  try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+      });
+      return response.text.trim();
+  } catch (error) {
+      console.error("Error generating garment concept:", error);
+      throw new Error("The AI failed to generate a concept. Please try again.");
   }
 }

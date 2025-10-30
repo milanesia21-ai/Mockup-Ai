@@ -1,4 +1,5 @@
 
+
 // FIX: Moved DesignLayer interface here for global access.
 export interface DesignLayer {
     id: string;
@@ -35,7 +36,8 @@ export interface MockupConfig {
   selectedGarment: string;
   selectedDesignStyle: string;
   selectedColor: string;
-  selectedMaterial: string;
+  aiMaterialPrompt: string;
+  fit: string;
   customMaterialTexture?: string;
   selectedStyle: StyleOption;
   selectedViews: string[];
@@ -123,6 +125,10 @@ export type StyleOption = typeof STYLE_OPTIONS[number];
 
 export const VIEWS = ['Front', 'Back', 'Side', 'Close-Up'];
 
+export const FIT_OPTIONS = ["Regular", "Oversized / Baggy", "Cropped", "Slim Fit"];
+
+export const TREND_PRESETS = ["Y2K Juicy", "90s Grunge Tee", "Gorpcore Tech", "Minimalist Streetwear", "Darkwear Utility"];
+
 export interface DesignStyleCategory {
   name: string;
   items: string[];
@@ -201,21 +207,6 @@ export const GARMENT_COLORS = [
   "Khaki (#C3B091)",
   "Brown (#A52A2A)",
 ];
-
-export const MATERIALS_BY_GARMENT_TYPE: { [key: string]: string[] } = {
-  'TOPS - CASUAL': ['Cotton Jersey', 'Polyester Blend', 'Tri-Blend (Cotton/Poly/Rayon)', 'Linen', 'Pima Cotton', 'Modal'],
-  'TOPS - COLLARED': ['Oxford Cloth', 'Poplin', 'Chambray', 'Flannel', 'Denim', 'Linen', 'Twill'],
-  'TOPS - SWEATSHIRTS & HOODIES': ['Fleece', 'French Terry', 'Sherpa', 'Cotton/Poly Blend', 'Scuba Knit'],
-  'OUTERWEAR - JACKETS': ['Denim', 'Leather', 'Nylon (for Windbreakers)', 'Satin (for Bombers)', 'Twill', 'Canvas', 'Wool'],
-  'OUTERWEAR - COATS & BLAZERS': ['Wool', 'Cashmere Blend', 'Tweed', 'Gabardine (for Trench coats)', 'Down-filled Nylon (for Puffers)'],
-  'OUTERWEAR - VESTS': ['Quilted Nylon', 'Fleece', 'Wool', 'Knit Cotton'],
-  'BOTTOMS - JEANS': ['Raw Denim', 'Stretch Denim', 'Selvedge Denim', 'Washed Denim'],
-  'BOTTOMS - PANTS': ['Cotton Twill (for Chinos)', 'Corduroy', 'Wool', 'Ripstop Cotton (for Cargo)', 'Fleece (for Joggers)'],
-  'BOTTOMS - SHORTS': ['Cotton Twill', 'Nylon', 'Polyester Mesh', 'Denim', 'Seersucker'],
-  'ATHLETIC & SPORTSWEAR': ['Moisture-Wicking Polyester', 'Spandex/Elastane Blend', 'Nylon', 'Mesh', 'Performance Cotton'],
-  'HEADWEAR': ['Cotton Twill', 'Canvas', 'Wool', 'Acrylic Knit (for Beanies)', 'Polyester Mesh'],
-  'FOOTWEAR': ['Leather', 'Suede', 'Canvas', 'Knit Mesh', 'Rubber', 'Synthetic Leather'],
-};
 
 // New constants for Text Tool
 export const FONT_OPTIONS = [
