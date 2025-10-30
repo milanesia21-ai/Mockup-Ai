@@ -1,3 +1,5 @@
+
+
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
 import { DesignLayer } from './EditorPanel';
 
@@ -7,6 +9,7 @@ interface DraggableGraphicProps {
   containerRef: React.RefObject<HTMLDivElement>;
   isActive: boolean;
   onSetActive: () => void;
+  zIndex: number;
 }
 
 export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({ 
@@ -15,6 +18,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
   containerRef, 
   isActive,
   onSetActive,
+  zIndex,
 }) => {
   const [isInteracting, setIsInteracting] = useState<false | 'dragging' | 'resizing'>(false);
   const graphicRef = useRef<HTMLDivElement>(null);
@@ -187,7 +191,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
     };
   }, [isInteracting, onUpdateLayer, containerRef, layer.id, aspectRatio]);
 
-  const borderStyle = isActive ? 'border-2 border-dashed border-indigo-400' : 'border-2 border-transparent';
+  const borderStyle = isActive ? 'border-2 border-dashed border-orange-400' : 'border-2 border-transparent';
   const interactionClass = isInteracting ? 'scale-105 shadow-2xl' : '';
 
   return (
@@ -195,7 +199,11 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
       ref={graphicRef}
       onMouseDown={(e) => handleInteractionStart(e, 'dragging')}
       className={`absolute cursor-move select-none p-1 box-content transition-all duration-150 ${borderStyle} ${interactionClass}`}
-      style={{ touchAction: 'none', zIndex: isActive ? 20 : 10 }}
+      style={{ 
+        touchAction: 'none', 
+        zIndex: isActive ? 20 : zIndex,
+        mixBlendMode: layer.blendMode as any,
+      }}
     >
         {layer.type === 'image' && (
             <img
@@ -225,7 +233,7 @@ export const DraggableGraphic: React.FC<DraggableGraphicProps> = ({
         {isActive && (
             <div 
                 onMouseDown={(e) => handleInteractionStart(e, 'resizing')}
-                className="absolute -right-2 -bottom-2 w-4 h-4 bg-white rounded-full border-2 border-indigo-500 cursor-se-resize"
+                className="absolute -right-2 -bottom-2 w-4 h-4 bg-white rounded-full border-2 border-orange-500 cursor-se-resize"
             ></div>
         )}
     </div>

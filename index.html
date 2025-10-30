@@ -14,12 +14,24 @@
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0",
-    "sonner": "https://cdn.jsdelivr.net/npm/sonner@1.5.0/dist/index.mjs"
+    "sonner": "https://cdn.jsdelivr.net/npm/sonner@1.5.0/dist/index.mjs",
+    "three": "https://aistudiocdn.com/three@^0.166.1",
+    "three/addons/": "https://aistudiocdn.com/three@^0.166.1/examples/jsm/",
+    "three/": "https://aistudiocdn.com/three@^0.180.0/"
   }
 }
 </script>
+<script>
+  // Set initial theme to avoid flash of unstyled content
+  const theme = localStorage.getItem('app-theme') || 'system';
+  if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
+</script>
 </head>
-  <body class="bg-gray-900 text-gray-100">
+  <body class="bg-gray-100 dark:bg-gray-900">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

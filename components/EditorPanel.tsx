@@ -1,21 +1,35 @@
+
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS } from '../constants';
+import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS, BLEND_MODES, ModificationRequest, GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS } from '../constants';
 import { generateInspirationPrompt, generateColorPalette } from '../services/geminiService';
 import { 
     Undo as UndoIcon, 
     Redo as RedoIcon,
+    Pencil as PencilIcon,
+    Pen as PenIcon,
+    Eraser as EraserIcon,
+    SymmetryX as SymmetryXIcon,
+    SymmetryY as SymmetryYIcon,
+    Layers as LayersIcon,
+    Add as AddIcon,
+    MagicWand as MagicWandIcon,
+    Upload as UploadIcon,
 } from './Icons';
 
 export interface DesignLayer {
     id: string;
-    type: 'image' | 'text' | 'shape';
-    content: string; // URL for image, text content for text, shape type for shape
+    type: 'image' | 'text' | 'shape' | 'drawing';
+    content: string; // URL for image, text content for text, shape type for shape, dataURL for drawing
     position: { x: number; y: number }; // Center, percentage based
     size: { width: number, height: number }; // Percentage of container
     rotation: number;
     opacity: number;
     visible: boolean;
+    // New properties for advanced layers
+    blendMode: GlobalCompositeOperation | (string & {});
+    lockTransparency: boolean;
     // Text specific
     fontFamily?: string;
     fontSize?: number; // Relative size
@@ -25,11 +39,13 @@ export interface DesignLayer {
     fill?: string;
 }
 
-export interface ModificationRequest {
-  type: 'Structural' | 'Text' | 'Graphic';
-  content: string;
-  location: string;
-  style: string;
+
+export interface SketchToolsConfig {
+    brushType: 'pencil' | 'pen' | 'eraser';
+    brushColor: string;
+    brushSize: number;
+    brushOpacity: number;
+    symmetry: 'none' | 'vertical' | 'horizontal';
 }
 
 interface EditorPanelProps {
@@ -42,21 +58,20 @@ interface EditorPanelProps {
     onSetActiveLayer: (id: string | null) => void;
     onGenerateGraphic: (prompt: string, color: string, placement: string, designStyle: string, texturePrompt?: string) => void;
     onModifyGarment: (modification: ModificationRequest) => void;
-    onRenderRealistic: () => void;
-    onPropagateDesign: () => void;
-    finalRenderedImage: string | null;
     isLoading: boolean;
     garmentDescription: string;
     garmentColor: string;
     designStyle: string;
+    selectedStyle: string;
     onUndo: () => void;
     onRedo: () => void;
     canUndo: boolean;
     canRedo: boolean;
-    propagationTargetCount: number;
+    sketchTools: SketchToolsConfig;
+    setSketchTools: React.Dispatch<React.SetStateAction<SketchToolsConfig>>;
 }
 
-type EditorTab = 'layers' | 'generate' | 'text' | 'elements' | 'uploads';
+type EditorTab = 'layers' | 'add' | 'modify' | 'sketch';
 
 const MicIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
@@ -101,20 +116,19 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     onSetActiveLayer,
     onGenerateGraphic,
     onModifyGarment,
-    onRenderRealistic,
-    onPropagateDesign,
-    finalRenderedImage,
     isLoading,
     garmentDescription,
     garmentColor,
     designStyle,
+    selectedStyle,
     onUndo,
     onRedo,
     canUndo,
     canRedo,
-    propagationTargetCount,
+    sketchTools,
+    setSketchTools,
 }) => {
-    const [activeTab, setActiveTab] = useState<EditorTab>('generate');
+    const [activeTab, setActiveTab] = useState<EditorTab>('layers');
     const [graphicPrompt, setGraphicPrompt] = useState('');
     const [texturePrompt, setTexturePrompt] = useState('');
     const [graphicColor, setGraphicColor] = useState('#FFFFFF');
@@ -133,7 +147,15 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const dragItem = useRef<number | null>(null);
     const dragOverItem = useRef<number | null>(null);
     
-    const activeLayer = layers.find(l => l.id === activeLayerId);
+    const activeLayer = useMemo(() => layers.find(l => l.id === activeLayerId), [layers, activeLayerId]);
+
+    // Contextually switch to sketch tab when a drawing layer is added/selected
+    useEffect(() => {
+        if (activeLayer?.type === 'drawing') {
+            setActiveTab('sketch');
+        }
+    }, [activeLayer]);
+
 
     const placementOptions = useMemo(() => {
         const garmentDescLower = garmentDescription.toLowerCase();
@@ -163,6 +185,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 onAddLayer({ type: 'image', content: imageDataUrl });
            } catch (error) {
                 console.error("Error reading file:", error);
+                toast.error('Failed to read the file.');
            }
         }
         e.target.value = '';
@@ -170,7 +193,19 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
     const handleInspireMeClick = async () => {
         setIsInspiring(true);
-        const promise = generateInspirationPrompt(garmentDescription);
+
+        // Get random values for a more varied inspiration
+        const allGarments = GARMENT_CATEGORIES.flatMap(cat => cat.items);
+        const allDesignStyles = DESIGN_STYLE_CATEGORIES.flatMap(cat => cat.items);
+        
+        const randomGarment = allGarments[Math.floor(Math.random() * allGarments.length)];
+        const randomDesignStyle = allDesignStyles[Math.floor(Math.random() * allDesignStyles.length)];
+        
+        const randomColorString = GARMENT_COLORS[Math.floor(Math.random() * GARMENT_COLORS.length)];
+        const hexMatch = randomColorString.match(/#([0-9a-fA-F]{6})/);
+        const randomColor = hexMatch ? hexMatch[0] : '#000000';
+
+        const promise = generateInspirationPrompt(randomGarment, randomDesignStyle, randomColor, selectedStyle);
 
         toast.promise(promise, {
             loading: 'Getting an idea from the AI...',
@@ -265,93 +300,105 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
     const renderActiveTab = () => {
         switch(activeTab) {
-            case 'generate':
+            case 'add':
                 return (
-                    <div>
+                    <div className="space-y-6">
                         {/* --- Generate Graphic --- */}
-                        <div className="flex justify-between items-center mb-2">
-                          <h3 className="text-lg font-semibold text-white">Generate AI Graphic</h3>
-                          <button 
-                            onClick={handleInspireMeClick} 
-                            disabled={isLoading || isInspiring}
-                            className="flex items-center gap-2 text-sm bg-indigo-600 px-3 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                            title="Let the AI suggest a design idea"
-                          >
-                            <span>🪄</span>
-                            <span>Inspire Me</span>
-                          </button>
-                        </div>
-                        <textarea
-                            value={graphicPrompt}
-                            onChange={(e) => setGraphicPrompt(e.target.value)}
-                            placeholder="e.g., A retro-style phoenix, vector art"
-                            className="w-full h-24 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
-                            disabled={isLoading || isInspiring}
-                        />
-                         <div className="mt-4">
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Texture Prompt (Optional)</label>
-                            <textarea
-                                value={texturePrompt}
-                                onChange={(e) => setTexturePrompt(e.target.value)}
-                                placeholder="e.g., embroidered patch, leather, denim"
-                                className="w-full h-16 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
-                                disabled={isLoading}
-                            />
-                        </div>
-                         <div className="mt-4">
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Placement</label>
-                            <select
-                                value={graphicPlacement}
-                                onChange={(e) => setGraphicPlacement(e.target.value)}
-                                className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500"
-                                disabled={isLoading || placementOptions.length === 0}
+                        <div>
+                          <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-lg font-semibold text-white">Generate AI Graphic</h3>
+                            <button 
+                              onClick={handleInspireMeClick} 
+                              disabled={isLoading || isInspiring}
+                              className="flex items-center gap-2 text-sm bg-orange-600/20 text-orange-300 px-3 py-2 rounded-lg hover:bg-orange-600/40 disabled:opacity-50 transition-colors"
+                              title="Let the AI suggest a design idea"
                             >
-                                {placementOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
-                        </div>
-                         <div className="mt-4">
-                            <div className="flex justify-between items-center mb-1">
-                                <label className="block text-sm font-medium text-gray-300">Graphic Color</label>
-                                <button 
-                                    onClick={handleSuggestColors}
-                                    disabled={isLoading || isSuggestingColors}
-                                    className="text-xs text-indigo-400 hover:underline disabled:opacity-50"
-                                >
-                                    {isSuggestingColors ? 'Suggesting...' : '🎨 Suggest Colors'}
-                                </button>
+                              <span>🪄</span>
+                              <span>Inspire Me</span>
+                            </button>
+                          </div>
+                          <textarea
+                              value={graphicPrompt}
+                              onChange={(e) => setGraphicPrompt(e.target.value)}
+                              placeholder="e.g., A retro-style phoenix, vector art"
+                              className="w-full h-24 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white resize-none"
+                              disabled={isLoading || isInspiring}
+                          />
+                           <div className="mt-4">
+                              <label className="block text-sm font-medium text-gray-300 mb-1">Texture Prompt (Optional)</label>
+                              <input
+                                  type="text"
+                                  value={texturePrompt}
+                                  onChange={(e) => setTexturePrompt(e.target.value)}
+                                  placeholder="e.g., embroidered patch, leather, denim"
+                                  className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
+                                  disabled={isLoading}
+                              />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 mt-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Placement</label>
+                                <select value={graphicPlacement} onChange={(e) => setGraphicPlacement(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3" disabled={isLoading || placementOptions.length === 0}>
+                                    {placementOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
                             </div>
-                            <input
-                                type="color"
-                                value={graphicColor}
-                                onChange={(e) => setGraphicColor(e.target.value)}
-                                className="w-full h-10 p-1 bg-gray-700 border-gray-600 rounded-md"
-                            />
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="block text-sm font-medium text-gray-300">Color</label>
+                                    <button onClick={handleSuggestColors} disabled={isLoading || isSuggestingColors} className="text-xs text-orange-400 hover:underline">
+                                        {isSuggestingColors ? '...' : 'Suggest'}
+                                    </button>
+                                </div>
+                                <input type="color" value={graphicColor} onChange={(e) => setGraphicColor(e.target.value)} className="w-full h-[38px] p-1 bg-gray-700 border-gray-600 rounded-md"/>
+                            </div>
+                          </div>
                             {suggestedPalette.length > 0 && (
                                 <div className="flex gap-2 mt-2">
                                     {suggestedPalette.map((color, index) => (
-                                        <button
-                                            key={index}
-                                            onClick={() => setGraphicColor(color)}
-                                            className="w-full h-8 rounded-md border-2 border-transparent hover:border-white transition-all"
-                                            style={{ backgroundColor: color }}
-                                            title={color}
-                                        />
+                                        <button key={index} onClick={() => setGraphicColor(color)} className="w-full h-8 rounded-md border-2 border-transparent hover:border-white transition-all" style={{ backgroundColor: color }} title={color}/>
                                     ))}
                                 </div>
                             )}
+                          <button
+                              onClick={() => onGenerateGraphic(graphicPrompt, graphicColor, graphicPlacement, designStyle, texturePrompt)}
+                              disabled={isLoading || isInspiring || !graphicPrompt || !graphicPlacement}
+                              className="w-full mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                          >
+                              {isLoading ? <LoadingSpinner /> : 'Generate & Add To Layers'}
+                          </button>
                         </div>
-                         <button
-                            onClick={() => onGenerateGraphic(graphicPrompt, graphicColor, graphicPlacement, designStyle, texturePrompt)}
-                            disabled={isLoading || isInspiring || !graphicPrompt || !graphicPlacement}
-                            className="w-full mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            {isLoading ? <LoadingSpinner /> : 'Generate & Add To Layers'}
-                        </button>
                         
-                        {/* --- Modify Garment --- */}
-                        <div className="border-t border-gray-700 my-6"></div>
+                        <div className="border-t border-gray-700"></div>
+
+                        {/* Add Text, Shape, Sketch Layer */}
+                        <div>
+                            <h3 className="text-lg font-semibold text-white mb-2">Add Basic Elements</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                <button onClick={() => onAddLayer({type: 'text', content: 'Hello World', fontFamily: 'Arial', fontWeight: 'normal', fontSize: 50, color: '#FFFFFF'})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Add Text</button>
+                                <button onClick={() => onAddLayer({type: 'shape', content: 'rectangle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Rectangle</button>
+                                <button onClick={() => onAddLayer({type: 'shape', content: 'circle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Circle</button>
+                            </div>
+                        </div>
+                        
+                        {/* Upload */}
+                         <div>
+                            <h3 className="text-lg font-semibold text-white">Upload Graphic</h3>
+                             <div className="mt-2 relative border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-orange-500 transition-colors">
+                                <input type="file" id="upload-input" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileUpload} accept="image/png, image/jpeg"/>
+                                <label htmlFor="upload-input" className="cursor-pointer">
+                                    <UploadIcon className="mx-auto h-8 w-8 text-gray-500" />
+                                    <p className="mt-2 text-gray-400">Click to upload</p>
+                                    <p className="text-xs text-gray-500">PNG, JPG</p>
+                                </label>
+                             </div>
+                         </div>
+                    </div>
+                );
+            case 'modify':
+                return (
+                     <div>
                         <h3 className="text-lg font-semibold text-white mb-2">Direct-to-Garment AI</h3>
-                        <p className="text-sm text-gray-400 mb-4">Apply realistic modifications directly to the base mockup.</p>
+                        <p className="text-sm text-gray-400 mb-4">Apply realistic modifications directly to the base mockup. This will regenerate all views and clear existing layers.</p>
                         
                         <div className="space-y-4">
                             <div>
@@ -372,7 +419,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                         modificationRequest.type === 'Text' ? "e.g., 'CALIFORNIA 1982'" :
                                         "e.g., 'a small eagle logo'"
                                     }
-                                    className="w-full flex-grow h-20 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
+                                    className="w-full flex-grow h-20 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white resize-none"
                                     disabled={isLoading}
                                 />
                                 <button 
@@ -408,80 +455,50 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         <button
                             onClick={() => onModifyGarment(modificationRequest)}
                             disabled={isLoading || !modificationRequest.content}
-                            className="w-full mt-4 bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="w-full mt-6 bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 disabled:opacity-50"
                         >
                             {isLoading ? <LoadingSpinner /> : 'Apply Modifications'}
                         </button>
 
                     </div>
                 );
-            case 'text':
+            case 'sketch':
                 return (
-                    <div>
-                         <h3 className="text-lg font-semibold mb-4 text-white">Text Tools</h3>
-                         <button onClick={() => onAddLayer({type: 'text', content: 'Hello World', fontFamily: 'Arial', fontWeight: 'normal', fontSize: 50, color: '#FFFFFF'})} className="w-full bg-gray-600 p-2 rounded-md mb-4">Add Text</button>
-                         {activeLayer?.type === 'text' && (
-                            <div className="space-y-4">
-                                <textarea
-                                    value={activeLayer.content}
-                                    onChange={(e) => onUpdateLayer(activeLayerId!, { content: e.target.value })}
-                                    className="w-full h-24 bg-gray-700 border border-gray-600 rounded-md p-2"
-                                />
-                                <div className="mb-4">
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Font Family</label>
-                                    <select value={activeLayer.fontFamily} onChange={e => onUpdateLayer(activeLayerId!, { fontFamily: e.target.value })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2">
-                                        {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
-                                    </select>
-                                </div>
-
-                                <div className="mb-4">
-                                  <label className="block text-sm font-medium text-gray-300 mb-1">Font Weight</label>
-                                  <select 
-                                    value={activeLayer.fontWeight || 'normal'} 
-                                    onChange={e => onUpdateLayer(activeLayerId!, { fontWeight: e.target.value })} 
-                                    className="w-full bg-gray-700 border border-gray-600 rounded-md p-2"
-                                  >
-                                    <option value="100">Thin (100)</option>
-                                    <option value="300">Light (300)</option>
-                                    <option value="400">Normal (400)</option>
-                                    <option value="500">Medium (500)</option>
-                                    <option value="700">Bold (700)</option>
-                                    <option value="900">Black (900)</option>
-                                  </select>
-                                </div>
-                                <div className="mb-4">
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Text Color</label>
-                                    <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value })} className="w-full p-1 h-10 bg-gray-700 rounded-md"/>
-                                </div>
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-lg font-semibold text-white">Sketch Tools</h3>
+                        </div>
+                        
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Brush Type</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'pencil'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'pencil' ? 'bg-orange-600' : 'bg-gray-700'}`}><PencilIcon /> Pencil</button>
+                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'pen'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'pen' ? 'bg-orange-600' : 'bg-gray-700'}`}><PenIcon /> Pen</button>
+                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'eraser'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'eraser' ? 'bg-orange-600' : 'bg-gray-700'}`}><EraserIcon /> Eraser</button>
                             </div>
-                         )}
-                    </div>
-                );
-            case 'elements':
-                 return (
-                    <div>
-                         <h3 className="text-lg font-semibold mb-4 text-white">Elements</h3>
-                         <div className="grid grid-cols-2 gap-2">
-                            <button onClick={() => onAddLayer({type: 'shape', content: 'rectangle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 aspect-square flex items-center justify-center rounded-md">
-                                <div className="w-1/2 h-1/2 bg-white" />
-                            </button>
-                             <button onClick={() => onAddLayer({type: 'shape', content: 'circle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 aspect-square flex items-center justify-center rounded-md">
-                                <div className="w-1/2 h-1/2 bg-white rounded-full" />
-                            </button>
-                         </div>
-                    </div>
-                );
-            case 'uploads':
-                 return (
-                    <div>
-                         <h3 className="text-lg font-semibold mb-4 text-white">Uploads</h3>
-                         <div className="relative border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
-                            <input type="file" id="upload-input" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileUpload} accept="image/png, image/jpeg"/>
-                            <label htmlFor="upload-input" className="cursor-pointer">
-                                <p className="text-gray-400">Click to upload your logo or graphic</p>
-                                <p className="text-xs text-gray-500">PNG, JPG</p>
-                            </label>
-                         </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Brush Color</label>
+                            <input type="color" value={sketchTools.brushColor} onChange={e => setSketchTools(s => ({...s, brushColor: e.target.value}))} className="w-full p-1 h-10 bg-gray-700 rounded-md"/>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Brush Size ({sketchTools.brushSize}px)</label>
+                            <input type="range" min="1" max="100" value={sketchTools.brushSize} onChange={e => setSketchTools(s => ({...s, brushSize: Number(e.target.value)}))} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"/>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Brush Opacity ({Math.round(sketchTools.brushOpacity * 100)}%)</label>
+                            <input type="range" min="0" max="1" step="0.01" value={sketchTools.brushOpacity} onChange={e => setSketchTools(s => ({...s, brushOpacity: Number(e.target.value)}))} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"/>
+                        </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Symmetry</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                <button onClick={() => setSketchTools(s => ({...s, symmetry: 'none'}))} className={`p-2 rounded-md ${sketchTools.symmetry === 'none' ? 'bg-orange-600' : 'bg-gray-700'}`}>Off</button>
+                                <button onClick={() => setSketchTools(s => ({...s, symmetry: 'vertical'}))} className={`p-2 rounded-md flex justify-center ${sketchTools.symmetry === 'vertical' ? 'bg-orange-600' : 'bg-gray-700'}`}><SymmetryYIcon /></button>
+                                <button onClick={() => setSketchTools(s => ({...s, symmetry: 'horizontal'}))} className={`p-2 rounded-md flex justify-center ${sketchTools.symmetry === 'horizontal' ? 'bg-orange-600' : 'bg-gray-700'}`}><SymmetryXIcon /></button>
+                            </div>
+                        </div>
+
                     </div>
                 );
             case 'layers':
@@ -493,26 +510,29 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         <div className="flex items-center gap-2">
                           <button onClick={onUndo} disabled={!canUndo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Undo"><UndoIcon /></button>
                           <button onClick={onRedo} disabled={!canRedo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Redo"><RedoIcon /></button>
+                          <button onClick={() => onAddLayer({type: 'drawing', content: '', size: {width: 1, height: 1}, position: {x: 0, y: 0}})} className="text-sm bg-gray-700 px-3 py-2 rounded-md hover:bg-gray-600">
+                            + Sketch Layer
+                          </button>
                         </div>
                       </div>
-                        {layers.length > 0 && (
+                        {layers.length > 0 ? (
                           <div className="space-y-2 mb-4">
-                              {layers.map((layer, index) => (
+                              {[...layers].reverse().map((layer, index) => {
+                                  const originalIndex = layers.length - 1 - index;
+                                  return (
                                   <div 
                                       key={layer.id}
                                       draggable
-                                      onDragStart={() => dragItem.current = index}
-                                      onDragEnter={() => dragOverItem.current = index}
+                                      onDragStart={() => dragItem.current = originalIndex}
+                                      onDragEnter={() => dragOverItem.current = originalIndex}
                                       onDragEnd={handleDragEnd}
                                       onDragOver={(e) => e.preventDefault()}
                                       onClick={() => onSetActiveLayer(layer.id)} 
-                                      className={`flex items-center p-2 rounded-md cursor-pointer transition-all ${activeLayerId === layer.id ? 'bg-indigo-500/30 ring-2 ring-indigo-500' : 'bg-gray-700'}`}
-                                      style={{
-                                          border: dragOverItem.current === index ? '2px dashed #6366f1' : 'none'
-                                      }}
+                                      className={`flex items-center p-2 rounded-md cursor-pointer transition-all ${activeLayerId === layer.id ? 'bg-orange-500/30 ring-2 ring-orange-500' : 'bg-gray-700'}`}
+                                      style={{ border: dragOverItem.current === originalIndex ? '2px dashed #f97316' : 'none' }}
                                   >
                                       <div className="flex-grow truncate pr-2 flex items-center">
-                                          <span className="cursor-grab pr-2">⠿</span>
+                                          <span className="cursor-grab pr-2 text-gray-500">⠿</span>
                                           {layer.type === 'image' && <img src={layer.content} className="w-8 h-8 object-contain inline mr-2 bg-white/10 rounded"/>}
                                           {layer.type === 'text' && <span className="text-xl font-bold mr-2 w-8 text-center">T</span>}
                                           {layer.type === 'shape' && (
@@ -520,22 +540,31 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                                   <div style={{ backgroundColor: layer.fill }} className={`w-5 h-5 ${layer.content === 'circle' ? 'rounded-full' : ''}`}></div>
                                               </div>
                                           )}
-                                          <span className="truncate">{layer.content.startsWith('data:') ? `Image Layer ${index + 1}` : layer.content}</span>
+                                          {layer.type === 'drawing' && <PencilIcon className="w-8 h-8 p-1 mr-2"/>}
+                                          <span className="truncate text-sm">
+                                            {layer.type === 'drawing' ? `Sketch Layer` : 
+                                             layer.type === 'text' ? layer.content :
+                                             layer.type === 'shape' ? `${layer.content.charAt(0).toUpperCase() + layer.content.slice(1)} Shape` :
+                                             `Image Layer`
+                                             }
+                                          </span>
                                       </div>
                                       <div className="flex gap-2">
                                         <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, {visible: !layer.visible})}}>{layer.visible ? '👁️' : '🙈'}</button>
                                         <button onClick={(e) => { e.stopPropagation(); onDeleteLayer(layer.id)}}>🗑️</button>
                                       </div>
                                   </div>
-                              ))}
+                              )})}
                           </div>
+                        ) : (
+                           <p className="text-gray-500 text-sm text-center py-4">Your design is empty. Use the 'Add' tab to add content.</p>
                         )}
 
                         {activeLayer && (
-                            <div className="border-t border-gray-700 pt-4">
+                            <div className="border-t border-gray-700 pt-4 space-y-4">
                                 <h4 className="text-md font-semibold mb-2 text-white">Layer Properties</h4>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Opacity</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Opacity ({Math.round(activeLayer.opacity * 100)}%)</label>
                                     <input
                                         type="range"
                                         min="0"
@@ -546,52 +575,82 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                                         className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
                                     />
                                 </div>
+                                {activeLayer.type === 'text' && (
+                                     <>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">Font Family</label>
+                                            <select value={activeLayer.fontFamily} onChange={e => onUpdateLayer(activeLayerId!, { fontFamily: e.target.value })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2">
+                                                {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
+                                            </select>
+                                        </div>
+                                         <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">Text Color</label>
+                                            <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value })} className="w-full p-1 h-10 bg-gray-700 border border-gray-600 rounded-md"/>
+                                        </div>
+                                    </>
+                                )}
+                                {activeLayer.type === 'shape' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">Fill Color</label>
+                                        <input 
+                                            type="color" 
+                                            value={activeLayer.fill} 
+                                            onChange={e => onUpdateLayer(activeLayerId!, { fill: e.target.value })} 
+                                            className="w-full p-1 h-10 bg-gray-700 border border-gray-600 rounded-md"
+                                        />
+                                    </div>
+                                )}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Blend Mode</label>
+                                    <select 
+                                        value={activeLayer.blendMode} 
+                                        onChange={(e) => onUpdateLayer(activeLayer.id, { blendMode: e.target.value })} 
+                                        className="w-full bg-gray-700 border border-gray-600 rounded-md p-2"
+                                    >
+                                        {BLEND_MODES.map(mode => <option key={mode.value} value={mode.value}>{mode.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium text-gray-300">Lock Transparency</span>
+                                    <button
+                                      type="button"
+                                      className={`${ activeLayer.lockTransparency ? 'bg-orange-600' : 'bg-gray-600' } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none`}
+                                      onClick={() => onUpdateLayer(activeLayer.id, { lockTransparency: !activeLayer.lockTransparency })}
+                                    >
+                                      <span className={`${ activeLayer.lockTransparency ? 'translate-x-6' : 'translate-x-1' } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}/>
+                                    </button>
+                                </div>
                             </div>
                         )}
-                        
-                        {layers.length === 0 && <p className="text-gray-500 text-sm text-center py-4">Your design is empty. Add a graphic, text, or elements.</p>}
                     </div>
                 );
         }
     }
 
-    const TabButton: React.FC<{tab: EditorTab, label: string}> = ({tab, label}) => (
-        <button onClick={() => setActiveTab(tab)} className={`px-3 py-2 text-sm rounded-md ${activeTab === tab ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
-            {label}
+    const TabButton: React.FC<{tab: EditorTab, icon: React.ReactNode, title: string}> = ({tab, icon, title}) => (
+        <button 
+            onClick={() => setActiveTab(tab)} 
+            className={`px-3 py-2 rounded-lg flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === tab ? 'bg-orange-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+            title={title}
+        >
+            {icon}
+            <span className="text-xs font-medium">{title}</span>
         </button>
     )
 
     return (
-        <div className="h-full flex flex-col space-y-6 overflow-y-hidden">
-            <div className="flex-shrink-0 grid grid-cols-5 gap-1 p-1 bg-gray-900 rounded-lg">
-                <TabButton tab="layers" label="Layers" />
-                <TabButton tab="generate" label="AI" />
-                <TabButton tab="text" label="Text" />
-                <TabButton tab="elements" label="Elements" />
-                <TabButton tab="uploads" label="Uploads" />
+        <div className="p-4">
+            <div className="flex-shrink-0 flex items-center gap-1 p-1 bg-gray-900 rounded-lg">
+                <TabButton tab="layers" icon={<LayersIcon />} title="Layers" />
+                <TabButton tab="add" icon={<AddIcon />} title="Add" />
+                <TabButton tab="modify" icon={<MagicWandIcon />} title="AI Modify" />
+                {activeLayer?.type === 'drawing' && (
+                     <TabButton tab="sketch" icon={<PencilIcon />} title="Sketch" />
+                )}
             </div>
             
-            <div className="flex-grow overflow-y-auto pr-2">
+            <div className="mt-4">
                 {renderActiveTab()}
-            </div>
-
-            <div className="flex-shrink-0 border-t border-gray-700 pt-4">
-                 <button
-                    onClick={onRenderRealistic}
-                    disabled={isLoading || layers.length === 0}
-                    className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                    {isLoading ? <LoadingSpinner /> : 'Render Realistic Mockup'}
-                </button>
-                {finalRenderedImage && propagationTargetCount > 0 && (
-                     <button
-                        onClick={onPropagateDesign}
-                        disabled={isLoading}
-                        className="w-full mt-2 bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        {isLoading ? <LoadingSpinner /> : `Propagate Design to ${propagationTargetCount} Other View${propagationTargetCount > 1 ? 's' : ''}`}
-                    </button>
-                )}
             </div>
         </div>
     );

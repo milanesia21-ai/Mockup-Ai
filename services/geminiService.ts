@@ -1,19 +1,14 @@
 
-
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { 
-    GARMENT_CATEGORIES, 
-    StyleOption, 
-    PHOTOREALISTIC_APPAREL_PROMPT,
-    PHOTOREALISTIC_SCENE_PROMPT,
-    TECHNICAL_SKETCH_PROMPT,
-    EASY_PROMPT_PARSER,
-    ADDITIONAL_VIEW_PHOTO_PROMPT,
-    ADDITIONAL_VIEW_SKETCH_PROMPT,
-    PHOTOREALISTIC_APPAREL_PROMPT_WITH_SEARCH,
-    MockupConfig
+    MockupConfig,
+    ModificationRequest,
+    GARMENT_CATEGORIES,
+    DESIGN_STYLE_CATEGORIES,
+    MATERIALS_BY_GARMENT_TYPE,
+    STYLE_OPTIONS,
 } from '../constants';
-import type { ModificationRequest } from "../components/EditorPanel";
+
 
 const API_KEY = process.env.API_KEY;
 
@@ -53,10 +48,52 @@ function cleanAndParseJson(jsonString: string): any {
 }
 
 export async function parseEasyPrompt(prompt: string): Promise<Partial<MockupConfig>> {
+  // Build the context for the AI
+  const garmentCatalog = GARMENT_CATEGORIES.map(cat => 
+    `- ${cat.name}: ${cat.items.join(', ')}`
+  ).join('\n');
+
+  const styleCatalog = DESIGN_STYLE_CATEGORIES.map(cat => 
+    `- ${cat.name}: ${cat.items.join(', ')}`
+  ).join('\n');
+
+  const uniqueMaterials = [...new Set(Object.values(MATERIALS_BY_GARMENT_TYPE).flat())].join(', ');
+
+  const finalPrompt = `
+    You are a hyper-attentive AI fashion assistant. Your primary function is to translate a user's freeform text into a precise JSON configuration. You must adhere strictly to the provided catalogs.
+
+    **User Request:** "${prompt}"
+
+    **Available Options Catalog:**
+    **Garment Types (selectedGarment):**
+${garmentCatalog}
+    
+    **Design Styles (selectedDesignStyle):**
+${styleCatalog}
+
+    **Materials (selectedMaterial):**
+    ${uniqueMaterials}
+
+    **Mockup Styles (selectedStyle):**
+    ${STYLE_OPTIONS.join(', ')}
+
+    **Chain-of-Thought Reasoning:**
+    1.  **Identify Explicit Keywords:** First, scan the prompt for exact or near-exact matches to items in the catalogs. An explicit mention like "denim jacket" should be prioritized.
+    2.  **Infer from Context:** If no exact match is found, analyze the descriptive language. A request for a "shirt for a 90s rock concert" strongly implies the "[90s Grunge]" design style. A "tough work shirt" implies a "Work shirt" garment type and "Canvas" or "Twill" material.
+    3.  **Synthesize Garment:** Determine the single best \`selectedGarment\` from the "Garment Types" catalog.
+    4.  **Synthesize Style:** Determine the single best \`selectedDesignStyle\` from the "Design Styles" catalog.
+    5.  **Synthesize Material:** Determine the single best \`selectedMaterial\` from the "Materials" catalog, considering what is appropriate for the chosen garment.
+    6.  **Extract Color:** Identify the color and convert it to a standard HEX code. "Charcoal" -> "#36454F".
+    7.  **Determine Mockup Style:** "Photo" or "realistic" maps to "Photorealistic Mockup". "Drawing" or "sketch" maps to "Technical Sketch Style". Default to "Photorealistic Mockup" if ambiguous.
+    8.  **Construct JSON:** Assemble the final JSON object. Omit any keys where a confident mapping could not be made.
+
+    **Final Output:**
+    Based on your reasoning, provide ONLY the final, valid JSON object with the keys "selectedGarment", "selectedDesignStyle", "selectedColor", "selectedMaterial", "selectedStyle". Omit any keys where you couldn't find a confident match.
+  `;
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: EASY_PROMPT_PARSER.replace('{{prompt}}', prompt),
+      contents: finalPrompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -90,172 +127,133 @@ export async function generateMockup(
   const garmentDescription = config.useAiApparel ? config.aiApparelPrompt : config.selectedGarment;
   const cleanDesignStyle = config.selectedDesignStyle.replace(/\[|\]/g, '');
 
-  // --- 0. Photorealistic with Google Search ---
-  if (config.useGoogleSearch && config.selectedStyle === 'Photorealistic Mockup' && !config.customMaterialTexture) {
-      const finalPrompt = PHOTOREALISTIC_APPAREL_PROMPT_WITH_SEARCH
-          .replace('{{garment}}', garmentDescription)
-          .replace('{{color}}', config.selectedColor)
-          .replace('{{material}}', config.selectedMaterial)
-          .replace('{{designStyle}}', cleanDesignStyle)
-          .replace('{{view}}', view);
+  let finalPrompt = '';
 
-      try {
-          const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: finalPrompt }] },
-              tools: [{googleSearch: {}}],
-              config: { responseModalities: [Modality.IMAGE] },
-          });
-
-          const part = response.candidates?.[0]?.content?.parts?.[0];
-          const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-          
-          const sources: GroundingSource[] = groundingChunks
-            .map(chunk => chunk.web)
-            .filter((web): web is { uri: string; title: string; } => !!web)
-            .map(web => ({ uri: web.uri, title: web.title || 'Untitled Source' }));
-
-          if (part?.inlineData) {
-              const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-              return { imageUrl, groundingSources: sources };
-          } else {
-              console.error("Gemini API returned no image with search:", JSON.stringify(response, null, 2));
-              throw new Error("No image was generated by the API using Google Search.");
-          }
-
-      } catch (error: any) {
-          console.error("Error generating mockup with Google Search:", error);
-          if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-              throw new Error("Request limit reached. Please wait a moment and try again.");
-          }
-          throw new Error("Failed to generate mockup with Google Search. Please try again.");
-      }
-  }
-
-
-  // --- 1. Technical Sketch ---
   if (config.selectedStyle === 'Technical Sketch Style') {
-    const finalPrompt = TECHNICAL_SKETCH_PROMPT
-      .replace('{{garment}}', garmentDescription)
-      .replace('{{designStyle}}', cleanDesignStyle)
-      .replace('{{view}}', view);
-    
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: finalPrompt }] },
-        config: { responseModalities: [Modality.IMAGE] },
-      });
-      const part = response.candidates?.[0]?.content?.parts?.[0];
-      if (part?.inlineData) {
-        const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-        return { imageUrl, groundingSources: [] };
-      } else {
-        console.error("Gemini API returned no image for sketch:", JSON.stringify(response, null, 2));
-        throw new Error("No sketch was generated by the API.");
-      }
-    } catch (error: any) {
-      console.error("Error generating technical sketch:", error);
-      if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-          throw new Error("Request limit reached. Please wait a moment and try again.");
-      }
-      throw new Error("Failed to generate technical sketch. Please try again.");
-    }
-  }
+     finalPrompt = `
+      **PRIMARY GOAL: VISUAL ONLY. NO TEXT.**
+      Your task is to generate a single, clean, 2D technical flat sketch of an apparel item. This is for a professional fashion mockup.
 
-  // --- 2. Photorealistic Mockup ---
+      **CRITICAL INSTRUCTIONS (MUST FOLLOW):**
+      1.  **OUTPUT TYPE:** The output MUST be a 2D flat sketch (vector style).
+      2.  **BACKGROUND:** The background MUST be solid white (#FFFFFF).
+      3.  **NO TEXT:** The final image must contain ZERO text, annotations, descriptions, or labels. It must be a pure visual representation.
+      4.  **COLOR:** Fill the entire garment with this solid hex color: ${config.selectedColor}.
+      5.  **LINE STYLE:** Use clean, thin, consistent black outlines.
 
-  // --- 2a. With Custom Texture ---
-  if (config.customMaterialTexture) {
-    let finalPrompt: string;
+      **DO NOT:**
+      - Do NOT create a 3D render or photorealistic image.
+      - Do NOT add shading, gradients, or artistic effects.
+      - Do NOT include any text, numbers, or measurements.
+      - Do NOT add logos, watermarks, or any other elements besides the garment.
 
-    if (config.useAiModelScene) {
-      finalPrompt = `
-        Using the provided fabric texture image, create a high-end, photorealistic fashion photograph for an e-commerce campaign.
-        - Garment: A ${garmentDescription}.
-        - Model: ${config.aiModelPrompt}.
-        - Scene: ${config.aiScenePrompt}.
-        - View: Show the ${view} of the garment.
-        - Color Overlay: The final garment should be tinted with the color ${config.selectedColor}.
-        - Style: The design aesthetic is ${cleanDesignStyle}.
-        - Final Image Rules: Do not add any text, logos, or watermarks. The focus should be on the apparel.
-      `;
-    } else {
-      finalPrompt = `
-        Using the provided fabric texture image, create a high-end, e-commerce style photorealistic mockup of a single garment.
-        - Garment: A ${garmentDescription}.
-        - View: Show the ${view} of the garment.
-        - Color Overlay: The final garment should be tinted with the color ${config.selectedColor}.
-        - Style: The design aesthetic is ${cleanDesignStyle}.
-        - Presentation: The garment should be presented in a "ghost mannequin" or "flat lay" style.
-        - Background: Use a neutral light gray studio background (#E0E0E0) with a subtle floor shadow.
-        - Final Image Rules: The final image must be purely visual. It must NOT contain any text, labels, hangers, props, or human figures.
-      `;
-    }
-    
-    const textureImagePart = { 
-      inlineData: { 
-        mimeType: config.customMaterialTexture.substring(5, config.customMaterialTexture.indexOf(';')),
-        data: dataUrlToBase64(config.customMaterialTexture) 
-      } 
-    };
-    const textPart = { text: finalPrompt };
-
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [textureImagePart, textPart] },
-        config: { responseModalities: [Modality.IMAGE] },
-      });
-      const part = response.candidates?.[0]?.content?.parts?.[0];
-      if (part?.inlineData) {
-        const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-        return { imageUrl, groundingSources: [] };
-      } else {
-        console.error("Gemini response did not contain image data:", JSON.stringify(response, null, 2));
-        throw new Error("The AI failed to generate a mockup from the custom texture.");
-      }
-    } catch (error: any) {
-      console.error("Error generating mockup with custom texture:", error);
-       if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-          throw new Error("Request limit reached. Please wait a moment and try again.");
-      }
-      throw new Error("Failed to generate mockup with custom texture. Please try again.");
-    }
+      **Garment Details:**
+      - **Garment to Sketch:** ${garmentDescription}
+      - **Design Aesthetic:** ${cleanDesignStyle}
+      - **View:** ${view}
+    `;
   } else {
-    // --- 2b. Without Custom Texture (Standard) ---
-    const basePrompt = config.useAiModelScene ? PHOTOREALISTIC_SCENE_PROMPT : PHOTOREALISTIC_APPAREL_PROMPT;
-    const finalPrompt = basePrompt
-      .replace('{{garment}}', garmentDescription)
-      .replace('{{color}}', config.selectedColor)
-      .replace('{{material}}', config.selectedMaterial)
-      .replace('{{designStyle}}', cleanDesignStyle)
-      .replace('{{view}}', view)
-      .replace('{{model}}', config.aiModelPrompt)
-      .replace('{{scene}}', config.aiScenePrompt);
-
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: finalPrompt }] },
-        config: { responseModalities: [Modality.IMAGE] },
-      });
-      const part = response.candidates?.[0]?.content?.parts?.[0];
-      if (part?.inlineData) {
-        const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-        return { imageUrl, groundingSources: [] };
-      } else {
-        console.error("Gemini API returned no image for mockup:", JSON.stringify(response, null, 2));
-        throw new Error("No image was generated by the API.");
-      }
-    } catch (error: any) {
-      console.error("Error generating photorealistic mockup:", error);
-      if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-          throw new Error("Request limit reached. Please wait a moment and try again.");
-      }
-      throw new Error("Failed to generate mockup. The AI may be experiencing issues.");
-    }
+     finalPrompt = `
+      You are a master AI fashion photographer. Your specialty is creating compelling, hyper-realistic product imagery for luxury e-commerce.
+      **Analysis & Visualization Process (Think Step-by-Step):**
+      1.  **Deconstruct:** Garment: ${garmentDescription}, Material: ${config.selectedMaterial}, Color: ${config.selectedColor}, Aesthetic: ${cleanDesignStyle}, View: ${view}.
+      2.  **Visualize Material:** Render the texture, sheen, and drape of "${config.selectedMaterial}" accurately.
+      3.  **Visualize Style:** Translate the "${cleanDesignStyle}" aesthetic into visual details (silhouette, fit, subtle cues).
+      4.  **Compose Shot:** Combine elements into a "ghost mannequin" or "flat lay" style on a neutral light gray studio background (#E0E0E0) with a soft shadow.
+      **CRITICAL Execution Rules:**
+      - **Goal:** Generate a single, photorealistic image.
+      - **NO Distractions:** The final image must NOT contain any text, labels, watermarks, hangers, props, or human figures.
+    `;
   }
+    
+    const model = config.selectedModel || 'gemini-2.5-flash-image';
+
+    if (model.startsWith('imagen')) {
+        // Imagen Path
+        try {
+            const response = await ai.models.generateImages({
+                model: model,
+                prompt: finalPrompt,
+                config: {
+                    numberOfImages: 1,
+                    aspectRatio: '1:1', // Default aspect ratio for Imagen
+                },
+            });
+
+            if (response.generatedImages && response.generatedImages.length > 0) {
+                const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+                const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
+                return { imageUrl, groundingSources: [] }; // Imagen does not support grounding
+            } else {
+                throw new Error("The Imagen API returned no image. Please try a different prompt or model.");
+            }
+        } catch (error: any) {
+            console.error("Error generating with Imagen:", error);
+            throw new Error("Failed to generate mockup with Imagen. The AI may be experiencing issues.");
+        }
+    } else {
+      // Gemini Path
+      try {
+        const apiConfig: any = { responseModalities: [Modality.IMAGE] };
+        if (config.useGoogleSearch) {
+            apiConfig.tools = [{googleSearch: {}}];
+        }
+
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: { parts: [{ text: finalPrompt }] },
+          config: apiConfig,
+        });
+        
+        const rawSources = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const groundingSources: GroundingSource[] = rawSources
+            .map((chunk: any) => ({
+                uri: chunk.web?.uri || '',
+                title: chunk.web?.title || '',
+            }))
+            .filter((source: GroundingSource) => source.uri && source.title);
+
+        const part = response.candidates?.[0]?.content?.parts?.[0];
+        if (part?.inlineData) {
+          const imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+          return { imageUrl, groundingSources };
+        } else {
+          const candidate = response.candidates?.[0];
+          const finishReason = candidate?.finishReason;
+          const finishMessage = candidate?.finishMessage || "No specific reason provided.";
+          
+          switch (finishReason) {
+              case 'SAFETY':
+                  throw new Error("Generation blocked due to safety policies. Please adjust your prompt.");
+              case 'RECITATION':
+                  throw new Error("Generation blocked to prevent recitation from sources. Please rephrase your prompt.");
+              case 'OTHER':
+                    throw new Error(`Generation failed: ${finishMessage}. Please try again.`);
+              default:
+                  console.error("Gemini API returned no image for mockup:", JSON.stringify(response, null, 2));
+                  throw new Error("No image was generated by the API. The response was empty.");
+          }
+        }
+      } catch (error: any) {
+        console.error("Error generating photorealistic mockup:", error);
+        
+        const errorMessage = error.message?.toLowerCase() || '';
+
+        if (errorMessage.includes('api key not valid')) {
+            throw new Error("Invalid API Key. Please check your configuration.");
+        }
+        if (errorMessage.includes('429') || errorMessage.includes('resource_exhausted')) {
+            throw new Error("Request limit reached. Please wait a moment and try again.");
+        }
+        if (errorMessage.includes('400') || errorMessage.includes('invalid_argument')) {
+            throw new Error("Invalid request. The AI configuration may be incorrect.");
+        }
+        
+        // Re-throw specific errors from the try block or fall back to a generic message
+        if (error?.message) throw error;
+        throw new Error("Failed to generate mockup. The AI may be experiencing issues.");
+      }
+    }
 }
 
 export async function generateAdditionalView(
@@ -267,9 +265,28 @@ export async function generateAdditionalView(
   const model = 'gemini-2.5-flash-image';
 
   if (config.selectedStyle === 'Technical Sketch Style') {
-    promptTemplate = ADDITIONAL_VIEW_SKETCH_PROMPT;
+    promptTemplate = `
+        **PRIMARY GOAL: VISUAL ONLY. NO TEXT.**
+        You are an expert AI fashion technical illustrator. The user has provided a reference sketch and needs another view.
+        Your task is to generate a 2D technical flat sketch of the {{view}} view of the EXACT SAME garment in the reference image.
+
+        **CRITICAL INSTRUCTIONS (NON-NEGOTIABLE):**
+        1.  **PERFECT CONSISTENCY:** The new sketch must perfectly match the reference's design, proportions, color, and line style.
+        2.  **OUTPUT TYPE:** The output MUST be a clean, 2D vector-style flat drawing.
+        3.  **BACKGROUND:** The background MUST be pure white (#FFFFFF).
+        4.  **NO TEXT:** The final image must contain ONLY the garment sketch. Do NOT add ANY text, labels, or annotations.
+        5.  **NO 3D/SHADING:** Do not add 3D effects, photorealism, or artistic shading.
+    `;
   } else {
-    promptTemplate = ADDITIONAL_VIEW_PHOTO_PROMPT;
+    promptTemplate = `
+        You are an expert AI fashion visualizer. The user has provided an image of a garment and wants to see another view of it.
+        Your task is to generate a photorealistic {{view}} view of the EXACT SAME garment shown in the provided image.
+
+        **CRITICAL RULES:**
+        1.  **Consistency is Key:** The generated image MUST be of the same garment. Match the color, material, texture, design style, and any unique features or graphics from the reference image perfectly.
+        2.  **Maintain Style:** The new view should match the presentation style of the reference image (e.g., if it's a "ghost mannequin", the new view should also be a "ghost mannequin").
+        3.  **Output:** The output must ONLY be the image of the garment from the new perspective. Do not add text or watermarks.
+    `;
   }
   
   const finalPrompt = promptTemplate.replace('{{view}}', view);
@@ -314,59 +331,78 @@ export async function generateGraphic(
     placement: string, 
     color: string,
     designStyle: string,
-    texturePrompt?: string
+    texturePrompt?: string,
+    model: string = 'gemini-2.5-flash-image'
 ): Promise<string> {
 
   let fullPrompt = `
-  You are a graphic asset generator for apparel. Your goal is to create an isolated, professional graphic with a transparent background.
+    Generate a single, isolated graphic asset with a transparent background. The graphic should be suitable for apparel.
 
-  **Primary Graphic Goal:**
-  - **Prompt:** A graphic of "${prompt}".
-  - **Primary Color:** ${color}
-  
-  **Destination Context (CRUCIAL):**
-  - **Garment:** ${garment}
-  - **Design Style:** ${designStyle}
-  - **Intended Placement:** ${placement}
+    **Graphic Details:**
+    - **Description:** A graphic of "${prompt}".
+    - **Dominant Color:** Should incorporate "${color}".
+    - **Aesthetic Style:** Must match the [${designStyle}] aesthetic.
+    - **Intended Use:** This will be placed on the '${placement}' of a '${garment}'. The design should be suitable for this context.
+    ${texturePrompt ? `- **Texture:** The graphic must have a visual texture of "${texturePrompt}".` : ''}
 
-  **Generation Instructions:**
-  1.  **Style Adaptation:** Interpret the graphic prompt ("${prompt}") through the lens of the Design Style (${designStyle}). DO NOT generate a generic graphic. The aesthetic must match the target style. For example, a [Japanese Streetwear] lion should look different from a [Minimalist/Normcore] lion.
-  2.  **Placement Optimization:** Since the graphic is for the ${placement} area, ensure its shape and orientation are visually impactful for that location.
+    **CRITICAL OUTPUT RULES:**
+    1.  **TRANSPARENT BACKGROUND:** The final image file MUST have a transparent background.
+    2.  **ISOLATED GRAPHIC ONLY:** Do NOT include the garment, shadows, or any other elements. The output must be ONLY the graphic itself.
   `;
   
-  if (texturePrompt && texturePrompt.trim() !== '') {
-    fullPrompt += `
-  3.  **Texture:** CRITICAL: The graphic MUST have the visual texture of "${texturePrompt}". It should not look flat. For example, if the texture prompt is "embroidered patch", the result must look like it's made of thread. If it's "leather", it should have a leather texture.
-    `;
-  }
+  const finalModel = model || 'gemini-2.5-flash-image';
 
-  fullPrompt += `
-  **CRITICAL OUTPUT RULES:**
-  1.  **TRANSPARENT BACKGROUND:** The final image file **MUST** have a transparent alpha channel.
-  2.  **NO BACKGROUND COLOR:** Do NOT render any background color, not even white. The background must be fully transparent.
-  3.  **GRAPHIC ONLY:** Do NOT include the garment, shadows, or any other elements in the image. The output must be **only the isolated graphic**.
-  `;
+  if (finalModel.startsWith('imagen')) {
+    // Imagen Path
+    try {
+        const response = await ai.models.generateImages({
+            model: finalModel,
+            prompt: fullPrompt,
+            config: {
+                numberOfImages: 1,
+                outputMimeType: 'image/png', // Request PNG for potential transparency
+                aspectRatio: '1:1',
+            },
+        });
 
-  try {
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: { parts: [{ text: fullPrompt }] },
-        config: { responseModalities: [Modality.IMAGE] },
-    });
-
-    const part = response.candidates?.[0]?.content?.parts?.[0];
-    if (part?.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
-    } else {
-      console.error("Gemini API returned no image for graphic:", JSON.stringify(response, null, 2));
-      throw new Error("No graphic was generated by the API.");
+        if (response.generatedImages && response.generatedImages.length > 0) {
+            const base64ImageBytes = response.generatedImages[0].image.imageBytes;
+            return `data:image/png;base64,${base64ImageBytes}`;
+        } else {
+            throw new Error("Imagen API returned no image for graphic.");
+        }
+    } catch (error: any) {
+        console.error("Error calling Imagen API for graphic generation:", error);
+        throw new Error("Failed to generate graphic with Imagen.");
     }
-  } catch (error: any) {
-    console.error("Error calling Gemini API for graphic generation:", error);
-    if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-        throw new Error("Request limit reached. Please wait a moment and try again.");
+  } else {
+    // Gemini Path
+    try {
+      const response = await ai.models.generateContent({
+          model: finalModel,
+          contents: { parts: [{ text: fullPrompt }] },
+          config: { responseModalities: [Modality.IMAGE] },
+      });
+
+      const part = response.candidates?.[0]?.content?.parts?.[0];
+      if (part?.inlineData) {
+        return `data:image/png;base64,${part.inlineData.data}`;
+      } else {
+        const finishReason = response.candidates?.[0]?.finishReason;
+        if (finishReason === 'SAFETY') {
+          throw new Error("The AI was unable to generate a graphic for this prompt. This can happen due to safety policies or if the request is unclear. Please try rephrasing your prompt.");
+        }
+        console.error("Gemini API returned no image for graphic:", JSON.stringify(response, null, 2));
+        throw new Error("No graphic was generated by the API.");
+      }
+    } catch (error: any) {
+      console.error("Error calling Gemini API for graphic generation:", error);
+      if (error?.message) throw error;
+      if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
+          throw new Error("Request limit reached. Please wait a moment and try again.");
+      }
+      throw new Error("Failed to generate graphic. Please check the console for more details.");
     }
-    throw new Error("Failed to generate graphic. Please check the console for more details.");
   }
 }
 
@@ -410,56 +446,191 @@ export async function generateColorPalette(
 }
 
 
-export async function generateInspirationPrompt(garment: string): Promise<string> {
-  const prompt = `
-    You are a creative director. Brainstorm a concise, visually interesting graphic design idea for a ${garment}.
-    The idea should be suitable for a t-shirt graphic.
-    The response should be short, punchy, and ready to be used as a generation prompt.
-    For example, if the garment is a hoodie, you might suggest "minimalist line art of a mountain range" or "a retro-futuristic cassette tape".
-    Respond with ONLY the idea text. Do not include conversational text like "Sure, here's an idea:".
-  `;
+export async function generateInspirationPrompt(garment: string, designStyle: string, color: string, selectedStyle: string): Promise<string> {
+  // Added a random number to the prompt to ensure uniqueness and bypass any potential caching.
+  const cacheBuster = Math.random();
+  let prompt = '';
+
+  if (selectedStyle === 'Technical Sketch Style') {
+    prompt = `
+      You are a master technical fashion designer creating specifications for a new garment. Your task is to brainstorm a clear, concise prompt for an AI to generate a technical sketch of a unique piece of apparel.
+
+      **Base Garment:** ${garment}
+      **Core Aesthetic:** ${designStyle}
+      **Primary Color:** ${color}
+
+      // Cache-busting number (ignore in your response): ${cacheBuster}
+
+      Based on these inputs, create a short (one-sentence) but precise description focusing on **structural and functional details**. Think about unconventional seam placements, unique closures (buttons, zippers), specific pocket types, or interesting fabric manipulations (pleats, darts). **Avoid vague, artistic language.**
+
+      Return ONLY the description, with no preamble or explanation.
+      Example: "A denim jacket with asymmetrical zip closure and an integrated, detachable harness system."
+    `;
+  } else {
+    prompt = `
+      You are a visionary creative director for an avant-garde fashion label known for breaking conventions. Your task is to brainstorm a compelling, descriptive prompt for an AI to generate a truly unique piece of apparel.
+
+      **Base Garment:** ${garment}
+      **Core Aesthetic:** ${designStyle}
+      **Primary Color:** ${color}
+
+      // Cache-busting number (ignore in your response): ${cacheBuster}
+
+      Based on these inputs, create a short (one-sentence) but highly evocative and unexpected description. Think about unconventional materials, asymmetrical cuts, surprising details, or a fusion of aesthetics. **Avoid clichés and common descriptions at all costs.**
+
+      Return ONLY the description, with no preamble or explanation.
+    `;
+  }
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-    });
-
-    // Clean up quotes and trim whitespace
-    const text = response.text.trim().replace(/^"|"$/g, '');
-    if (!text) {
-        throw new Error("The AI didn't return an idea. Try again.");
-    }
-    return text;
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+            // Increased temperature to maximum for highest creativity and randomness.
+            temperature: 1.0,
+        }
+      });
+      return response.text.trim();
   } catch (error) {
-    console.error("Error generating inspiration prompt:", error);
-    throw new Error("Failed to get an idea from the AI. Please try again.");
+      console.error("Error generating inspiration prompt:", error);
+      throw new Error("The AI failed to generate an idea. Please try again.");
   }
 }
 
-export async function modifyGarmentImage(baseImage: string, modification: ModificationRequest): Promise<string> {
-   const fullPrompt = `
-    You are a professional apparel design assistant. Your task is to perform a 'Direct-to-Garment' (DTG) modification on the provided base image, preserving photorealism.
 
-    **Reference Image:** [Base Image Provided]
+export async function renderRealisticComposite(
+  baseGarmentUrl: string,
+  flatGraphicUrl: string
+): Promise<string> {
+  const prompt = `
+    You are a world-class AI rendering engine for a Print-on-Demand service, similar to Printify or Printful.
+    Your task is to realistically apply a flat graphic onto a photorealistic apparel mockup. The goal is to make the graphic look like it's part of the fabric, not just a sticker on top.
 
-    **Modification Request:**
-    - **Type:** ${modification.type}
-    - **Content:** ${modification.content}
-    - **Semantic Location:** ${modification.location || 'N/A'}
-    - **Required Style:** ${modification.style}
+    You will be given two images:
+    1.  The Base Garment: A photorealistic mockup of a piece of clothing.
+    2.  The Flat Graphic: A graphic with a transparent background that needs to be applied.
 
-    **Critical Instructions:**
-    1.  **Mesh Analysis:** Analyze the topography of the garment in the Reference Image (folds, shadows, texture).
-    2.  **Warping & Application:** Apply the requested content (${modification.content}) to the specified semantic location. The content must realistically follow the fabric's folds and shadows. It must appear printed or stitched onto the garment, not flatly overlaid.
-    3.  **Style Matching:** Interpret the 'Required Style' to render the content correctly (e.g., if style is 'cracked, vintage varsity font', the text must look like that). For 'Structural' changes, apply the modification as described.
-    4.  **Output:** Return ONLY the modified image, with the same dimensions and background as the original. Do not add text or watermarks.
-   `;
+    **Rendering Instructions (Displacement Mapping Simulation):**
+    1.  **Analyze Fabric:** Analyze the Base Garment image to understand the fabric's texture, folds, wrinkles, seams, and lighting.
+    2.  **Warp & Distort:** Apply the Flat Graphic to the garment, but warp and distort its pixels to perfectly follow the underlying fabric's contours. The graphic should bend into creases and stretch over folds.
+    3.  **Apply Lighting & Shadows:** The lighting and shadows from the Base Garment must realistically affect the applied graphic. Darken the parts of the graphic that are in shadow and brighten the parts that are highlighted.
+    4.  **Mimic Texture:** Subtly blend the fabric's texture into the graphic itself, so it looks like it was printed on or woven into the material.
 
-   try {
-    const imagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(baseImage) } };
-    const textPart = { text: fullPrompt };
+    **Output:**
+    Return ONLY the final, photorealistic image of the garment with the graphic perfectly integrated. Do not add any text or watermarks.
+  `;
+  
+  const baseImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(baseGarmentUrl) } };
+  const graphicImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(flatGraphicUrl) } };
+  const textPart = { text: prompt };
 
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: { parts: [baseImagePart, graphicImagePart, textPart] },
+      config: { responseModalities: [Modality.IMAGE] },
+    });
+    const part = response.candidates?.[0]?.content?.parts?.[0];
+    if (part?.inlineData) {
+      return `data:image/png;base64,${part.inlineData.data}`;
+    } else {
+      console.error("Gemini API returned no image for realistic composite:", JSON.stringify(response, null, 2));
+      throw new Error("The AI failed to render the realistic composite.");
+    }
+  } catch (error: any) {
+    console.error("Error rendering realistic composite:", error);
+    if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
+        throw new Error("Request limit reached. Please wait a moment and try again.");
+    }
+    throw new Error("Failed to render realistic composite. Please try again.");
+  }
+}
+
+export async function propagateDesignToView(
+    designedViewUrl: string,
+    cleanTargetViewUrl: string,
+    sourceViewName: string,
+    targetViewName: string
+): Promise<string> {
+    const prompt = `
+        You are an expert AI apparel designer. You are given two images:
+        1. A garment from a specific view (${sourceViewName}) that has a design applied to it.
+        2. A clean, blank version of the SAME garment from a different view (${targetViewName}).
+
+        Your task is to intelligently propagate the design from the first image onto the second one.
+
+        **Instructions:**
+        1. **Analyze the Design:** Identify all the graphic elements, text, and their placements on the designed ${sourceViewName} view.
+        2. **Logical Placement:** Determine where those design elements would logically appear on the ${targetViewName} view. For example, a graphic on the front of a shirt might not be visible from the back, but a sleeve graphic might wrap around and be partially visible.
+        3. **Apply and Render:** Apply the design to the clean ${targetViewName} view, ensuring it's realistically rendered, following the fabric's folds, lighting, and perspective for that new angle.
+
+        **Output:**
+        Return ONLY the image of the ${targetViewName} view with the design correctly propagated.
+    `;
+    
+    const designedImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(designedViewUrl) } };
+    const cleanImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(cleanTargetViewUrl) } };
+    const textPart = { text: prompt };
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts: [designedImagePart, cleanImagePart, textPart] },
+            config: { responseModalities: [Modality.IMAGE] }
+        });
+        const part = response.candidates?.[0]?.content?.parts?.[0];
+        if (part?.inlineData) {
+            return `data:image/png;base64,${part.inlineData.data}`;
+        } else {
+            console.error(`Gemini API returned no image for propagating to ${targetViewName} view:`, JSON.stringify(response, null, 2));
+            throw new Error(`The AI failed to propagate the design to the ${targetViewName} view.`);
+        }
+    } catch (error) {
+        console.error(`Error propagating design to ${targetViewName} view:`, error);
+        throw new Error(`Failed to propagate the design to the ${targetViewName} view. Please try again.`);
+    }
+}
+
+export async function modifyGarmentImage(
+  baseImageUrl: string,
+  modification: ModificationRequest
+): Promise<string> {
+  let prompt = `
+    You are an expert AI photo editor specializing in apparel. Your task is to apply a specific modification to the provided garment image. You must ONLY change what is requested and keep the rest of the image (style, lighting, background, base garment) identical.
+
+    **Modification Details:**
+    - **Type of Change:** ${modification.type}
+    - **Request:** "${modification.content}"
+  `;
+
+  if (modification.type !== 'Structural') {
+    prompt += `
+    - **Location on Garment:** ${modification.location}
+    - **Style of Modification:** ${modification.style}
+    `;
+  } else {
+     prompt += `
+    - **Style of Modification:** The modification should seamlessly blend with the existing garment's style (${modification.style}).
+    `;
+  }
+  
+  prompt += `
+    **CRITICAL RULES:**
+    1.  **Targeted Edit:** Only apply the requested change. Do not alter the garment's color, texture, fit, or the background unless explicitly told to.
+    2.  **Realism:** The modification must look photorealistic and naturally integrated with the garment's fabric, following its folds and lighting.
+    3.  **Output:** Return only the fully modified image. Do not add text or watermarks.
+  `;
+  
+  const imagePart = { 
+    inlineData: { 
+      mimeType: 'image/png', // Assume PNG from data URL
+      data: dataUrlToBase64(baseImageUrl) 
+    } 
+  };
+  const textPart = { text: prompt };
+
+  try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { parts: [imagePart, textPart] },
@@ -472,104 +643,14 @@ export async function modifyGarmentImage(baseImage: string, modification: Modifi
     if (part?.inlineData) {
       return `data:image/png;base64,${part.inlineData.data}`;
     } else {
-      console.error("Gemini API returned no image for modification:", JSON.stringify(response, null, 2));
+      console.error("Gemini API returned no image for garment modification:", JSON.stringify(response, null, 2));
       throw new Error("The AI failed to modify the garment.");
     }
-   } catch (error: any) {
-    console.error("Error calling Gemini API for garment modification:", error);
-    if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-        throw new Error("Request limit reached. Please wait a moment and try again.");
-    }
-    throw new Error("Failed to modify garment. Please check the console for more details.");
-   }
-}
-
-
-export async function renderRealisticComposite(baseImage: string, compositeGraphic: string): Promise<string> {
-   const prompt = `
-    Analyze the provided base apparel image and the separate composite graphic image.
-    Your task is to create a new, hyper-realistic composite image by fusing the graphic onto the apparel.
-
-    CRITICAL INSTRUCTIONS:
-    1.  **Smart Displacement Mapping:** The graphic must be perfectly integrated into the apparel. It must follow and distort according to the fabric's natural folds, creases, wrinkles, and texture. It should not look like a flat sticker.
-    2.  **Realistic Lighting:** Analyze the lighting and shadows of the base image (direction, softness, intensity) and accurately apply them to the graphic. The graphic must look like it exists in the same environment as the garment.
-    3.  **Maintain Integrity:** Do not change the apparel, the graphic's core design, or the background. The final output must be a single, photorealistic image of the printed garment.
-   `;
-
-   try {
-    const baseImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(baseImage) } };
-    const graphicPart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(compositeGraphic) } };
-    const textPart = { text: prompt };
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts: [textPart, baseImagePart, graphicPart] },
-      config: {
-        responseModalities: [Modality.IMAGE],
-      },
-    });
-
-    const part = response.candidates?.[0]?.content?.parts?.[0];
-    if (part?.inlineData) {
-      const base64ImageBytes: string = part.inlineData.data;
-      return `data:image/png;base64,${base64ImageBytes}`;
-    } else {
-      throw new Error("The AI failed to render the realistic composite image.");
-    }
-   } catch (error: any) {
-    console.error("Error calling Gemini API for realistic rendering:", error);
-    if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-        throw new Error("Request limit reached. Please wait a moment and try again.");
-    }
-    throw new Error("Failed to render realistic mockup. Please check the console for more details.");
-   }
-}
-
-export async function propagateDesignToView(
-  renderedSourceImage: string,
-  cleanTargetImage: string,
-  sourceView: string,
-  targetView: string
-): Promise<string> {
-  const prompt = `
-    You are a 360° product visualizer. Your task is to propagate a design from one view of a garment to another.
-
-    **Image 1 (Reference):** Shows the '${sourceView}' view of a garment with a design applied.
-    **Image 2 (Target):** Shows the clean '${targetView}' view of the SAME garment.
-
-    **Instructions:**
-    1.  **Analyze Design:** Examine Image 1 to identify all non-original design elements (graphics, text, etc.).
-    2.  **Logical Inference:** Determine if and how these design elements would be visible or continue onto Image 2. For example, a sleeve graphic might wrap around and be partially visible from the back. A chest graphic would not be visible from the back.
-    3.  **Apply Changes:** Modify Image 2 ONLY to include the relevant, visible parts of the design.
-    4.  **Maintain Realism:** The applied changes must perfectly match the style, lighting, and texture of both source images.
-    5.  **Output:** Return the modified Image 2. If no design from Image 1 would logically be visible on Image 2, return Image 2 unchanged.
-  `;
-
-  try {
-    const sourceImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(renderedSourceImage) } };
-    const targetImagePart = { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(cleanTargetImage) } };
-    const textPart = { text: prompt };
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts: [textPart, sourceImagePart, targetImagePart] },
-      config: {
-        responseModalities: [Modality.IMAGE],
-      },
-    });
-
-    const part = response.candidates?.[0]?.content?.parts?.[0];
-    if (part?.inlineData) {
-      return `data:image/png;base64,${part.inlineData.data}`;
-    } else {
-      console.error(`Gemini API returned no image for design propagation to ${targetView}:`, JSON.stringify(response, null, 2));
-      throw new Error(`The AI failed to propagate the design to the ${targetView} view.`);
-    }
   } catch (error: any) {
-    console.error(`Error propagating design to ${targetView}:`, error);
+    console.error("Error modifying garment image:", error);
     if (error.toString().includes('RESOURCE_EXHAUSTED') || (error.message && error.message.includes('429'))) {
-        throw new Error("Request limit reached while propagating design. Please wait and try again.");
+        throw new Error("Request limit reached. Please wait a moment and try again.");
     }
-    throw new Error(`Failed to propagate design to the ${targetView} view. Please try again.`);
+    throw new Error("Failed to modify the garment. The AI may be experiencing issues.");
   }
 }

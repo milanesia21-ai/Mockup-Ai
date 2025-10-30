@@ -1,102 +1,52 @@
-
 import React, { useState, useMemo, useRef } from 'react';
-import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, MATERIALS_BY_GARMENT_TYPE, STYLE_OPTIONS, StyleOption, VIEWS } from '../constants';
+import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, MATERIALS_BY_GARMENT_TYPE, STYLE_OPTIONS, StyleOption, VIEWS, AI_IMAGE_MODELS } from '../constants';
 import { toast } from 'sonner';
-
-export interface MockupConfig {
-  easyPrompt: string;
-  selectedCategory: string;
-  selectedGarment: string;
-  selectedDesignStyle: string;
-  selectedColor: string;
-  selectedMaterial: string;
-  customMaterialTexture?: string;
-  selectedStyle: StyleOption;
-  selectedViews: string[];
-  aiApparelPrompt: string;
-  useAiApparel: boolean;
-  aiModelPrompt: string;
-  aiScenePrompt: string;
-  useAiModelScene: boolean;
-  useGoogleSearch: boolean;
-}
+import type { MockupConfig } from '../constants';
 
 interface ControlPanelProps {
   config: MockupConfig;
   setConfig: React.Dispatch<React.SetStateAction<MockupConfig>>;
-  onGenerate: () => void;
-  onParseEasyPrompt: () => void;
-  onInspireMe: () => void;
   presets: Record<string, MockupConfig>;
   onSavePreset: () => void;
   onLoadPreset: (name: string) => void;
   onDeletePreset: (name: string) => void;
-  isLoading: boolean;
 }
 
-const InputField: React.FC<{
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-}> = ({ label, value, onChange, placeholder, disabled }) => (
-  <div className="mb-4">
-    <label className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
-    <input
-      type="text"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      disabled={disabled}
-      className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white disabled:opacity-50"
-    />
-  </div>
-);
-
-const TextAreaField: React.FC<{
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  rows?: number;
-}> = ({ label, value, onChange, placeholder, disabled, rows = 3 }) => (
-  <div className="mb-4">
-    <label className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      disabled={disabled}
-      rows={rows}
-      className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white resize-none"
-    />
-  </div>
-);
+const Card: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className }) => {
+    return (
+        <div className={`bg-gray-800 rounded-lg p-4 shadow-lg ${className}`}>
+            <h3 className="text-lg font-bold text-orange-400 mb-4">{title}</h3>
+            <div className="space-y-4">{children}</div>
+        </div>
+    );
+};
 
 const ToggleSwitch: React.FC<{
   label: string;
+  description?: string;
   enabled: boolean;
   setEnabled: (enabled: boolean) => void;
   disabled?: boolean;
-}> = ({ label, enabled, setEnabled, disabled = false }) => (
-  <div className="flex items-center justify-between mb-4">
-    <span className={`text-sm font-medium ${disabled ? 'text-gray-500' : 'text-gray-300'}`}>{label}</span>
-    <button
-      type="button"
-      disabled={disabled}
-      className={`${
-        enabled ? 'bg-indigo-600' : 'bg-gray-600'
-      } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed`}
-      onClick={() => setEnabled(!enabled)}
-    >
-      <span
+}> = ({ label, description, enabled, setEnabled, disabled = false }) => (
+  <div>
+    <div className="flex items-center justify-between">
+      <span className={`text-sm font-medium ${disabled ? 'text-gray-500' : 'text-gray-300'}`}>{label}</span>
+      <button
+        type="button"
+        disabled={disabled}
         className={`${
-          enabled ? 'translate-x-6' : 'translate-x-1'
-        } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}
-      />
-    </button>
+          enabled ? 'bg-orange-600' : 'bg-gray-600'
+        } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed`}
+        onClick={() => setEnabled(!enabled)}
+      >
+        <span
+          className={`${
+            enabled ? 'translate-x-6' : 'translate-x-1'
+          } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}
+        />
+      </button>
+    </div>
+    {description && <p className="text-xs text-gray-500 mt-1">{description}</p>}
   </div>
 );
 
@@ -117,14 +67,10 @@ const StopIcon: React.FC = () => (
 export const ControlPanel: React.FC<ControlPanelProps> = ({
   config,
   setConfig,
-  onGenerate,
-  onParseEasyPrompt,
-  onInspireMe,
   presets,
   onSavePreset,
   onLoadPreset,
   onDeletePreset,
-  isLoading,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const presetSelectRef = useRef<HTMLSelectElement>(null);
@@ -137,10 +83,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   
   const handleCategoryChange = (category: string) => {
     const newItems = GARMENT_CATEGORIES.find(cat => cat.name === category)?.items || [];
+    const newMaterials = MATERIALS_BY_GARMENT_TYPE[category] || [];
     setConfig(prev => ({
         ...prev,
         selectedCategory: category,
-        selectedGarment: newItems[0] || ''
+        selectedGarment: newItems[0] || '',
+        selectedMaterial: newMaterials[0] || '',
+    }));
+  };
+
+  const handleGarmentChange = (newGarment: string) => {
+    // To provide better user feedback, we reset the material to the category's default when the garment type changes.
+    const materialOptionsForCategory = MATERIALS_BY_GARMENT_TYPE[config.selectedCategory] || [];
+    setConfig(prev => ({
+      ...prev,
+      selectedGarment: newGarment,
+      selectedMaterial: materialOptionsForCategory[0] || '',
     }));
   };
 
@@ -257,103 +215,88 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       recognition.start();
   };
 
-  const isSearchDisabled = config.selectedStyle === 'Technical Sketch Style' || !!config.customMaterialTexture;
+  const isImagenModel = config.selectedModel.startsWith('imagen');
+  const isSearchDisabled = !!config.customMaterialTexture || isImagenModel;
 
   return (
-    <div className="h-full flex flex-col space-y-4">
-      <h2 className="text-xl font-bold text-white">Mockup Studio</h2>
-      
-      {/* Easy Mode */}
-      <div className="bg-gray-700/50 p-4 rounded-lg">
-        <label className="block text-sm font-bold text-indigo-400 mb-2">Easy Mode</label>
-        <div className="flex gap-2">
-            <input
-              type="text"
-              value={config.easyPrompt}
-              onChange={(e) => handleConfigChange('easyPrompt', e.target.value)}
-              placeholder="e.g., photorealistic black cotton hoodie..."
-              className="flex-grow bg-gray-900 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-white"
+    <div className="p-4 space-y-4">
+        {/* Card 1: Define Garment */}
+        <Card title="Define Garment">
+             <ToggleSwitch 
+                label="Generate Custom Apparel with AI" 
+                enabled={config.useAiApparel} 
+                setEnabled={(val) => handleConfigChange('useAiApparel', val)} 
             />
-            <button onClick={onParseEasyPrompt} className="bg-indigo-600 px-3 rounded-md hover:bg-indigo-700" title="Auto-fill options from prompt">
-                🪄
-            </button>
-            <button 
-              onClick={() => handleVoiceInput('easyPrompt')}
-              className={`px-3 rounded-md transition-colors ${isRecording === 'easy' ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600 hover:bg-gray-500'}`} 
-              title={isRecording === 'easy' ? "Stop Recording" : "Record Voice Prompt"}
-            >
-              {isRecording === 'easy' ? <StopIcon/> : <MicIcon />}
-            </button>
-        </div>
-      </div>
-
-      {/* Pro Mode */}
-      <div className="flex-grow space-y-4 overflow-y-auto pr-2">
-        <div className="border-t border-gray-700 pt-4">
-            <h3 className="text-lg font-semibold text-white mb-2">Professional Options</h3>
-
-            <ToggleSwitch label="Generate Custom Apparel with AI" enabled={config.useAiApparel} setEnabled={(val) => handleConfigChange('useAiApparel', val)} />
             {config.useAiApparel ? (
-                <div className="relative">
-                  <TextAreaField 
-                    label="Describe Apparel" 
-                    value={config.aiApparelPrompt} 
-                    onChange={(val) => handleConfigChange('aiApparelPrompt', val)} 
-                    placeholder="e.g., a 1980s sci-fi jacket with high collar"
-                  />
-                  <button 
-                    onClick={() => handleVoiceInput('aiApparelPrompt')}
-                    className={`absolute top-0 right-0 mt-1 mr-1 p-2 rounded-full transition-colors ${isRecording === 'apparel' ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600/50 hover:bg-gray-500/50'}`} 
-                    title={isRecording === 'apparel' ? "Stop Recording" : "Record Apparel Description"}
-                  >
-                    {isRecording === 'apparel' ? <StopIcon/> : <MicIcon className="h-4 w-4" />}
-                  </button>
+                <div>
+                  <label htmlFor="ai-apparel-prompt" className="block text-sm font-medium text-gray-300">AI Apparel Prompt</label>
+                  <p id="ai-apparel-description" className="text-xs text-gray-500 mt-1 mb-2">Describe the custom apparel you want to create with AI.</p>
+                  <div className="relative">
+                      <textarea
+                        id="ai-apparel-prompt"
+                        aria-describedby="ai-apparel-description"
+                        value={config.aiApparelPrompt}
+                        onChange={(e) => handleConfigChange('aiApparelPrompt', e.target.value)}
+                        placeholder="e.g., An oversized black hoodie with a distressed vintage band logo on the front..."
+                        rows={3}
+                        className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white resize-none pr-12"
+                      />
+                      <button 
+                        onClick={() => handleVoiceInput('aiApparelPrompt')}
+                        className={`absolute top-2 right-2 p-2 rounded-full transition-colors ${isRecording === 'apparel' ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600/50 hover:bg-gray-500/50'}`} 
+                        title={isRecording === 'apparel' ? "Stop Recording" : "Record Apparel Description"}
+                      >
+                        {isRecording === 'apparel' ? <StopIcon/> : <MicIcon className="h-4 w-4" />}
+                      </button>
+                  </div>
                 </div>
             ) : (
                 <>
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-300 mb-1">Garment Category</label>
-                        <select value={config.selectedCategory} onChange={(e) => handleCategoryChange(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
+                        <select value={config.selectedCategory} onChange={(e) => handleCategoryChange(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
                             {GARMENT_CATEGORIES.map(cat => <option key={cat.name} value={cat.name}>{cat.name}</option>)}
                         </select>
                     </div>
-                    <div className="mb-4">
-                        <label className="block text-sm font-medium text-gray-300 mb-1">Garment Type</label>
-                        <select value={config.selectedGarment} onChange={(e) => handleConfigChange('selectedGarment', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Type</label>
+                        <select value={config.selectedGarment} onChange={(e) => handleGarmentChange(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
                            {garmentItems.map(item => <option key={item} value={item}>{item}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Material</label>
+                        <select value={config.selectedMaterial} onChange={(e) => handleConfigChange('selectedMaterial', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500" disabled={materialOptions.length === 0 || !!config.customMaterialTexture}>
+                            {materialOptions.map(item => <option key={item} value={item}>{item}</option>)}
                         </select>
                     </div>
                 </>
             )}
-
-            <ToggleSwitch label="Show on AI Model & Scene" enabled={config.useAiModelScene} setEnabled={(val) => handleConfigChange('useAiModelScene', val)} />
-            {config.useAiModelScene && (
-                <div className="bg-gray-700/50 p-3 rounded-md">
-                    <InputField label="Describe Model" value={config.aiModelPrompt} onChange={(val) => handleConfigChange('aiModelPrompt', val)} placeholder="e.g., male model, athletic build"/>
-                    <InputField label="Describe Background" value={config.aiScenePrompt} onChange={(val) => handleConfigChange('aiScenePrompt', val)} placeholder="e.g., on a city rooftop at dusk"/>
-                </div>
-            )}
-        </div>
-
-        <div className="border-t border-gray-700 pt-4 space-y-4">
-            <h3 className="text-lg font-semibold text-white mb-2">Details & Style</h3>
-             <ToggleSwitch 
-                label="Enhance with Google Search" 
-                enabled={config.useGoogleSearch} 
-                setEnabled={(val) => handleConfigChange('useGoogleSearch', val)} 
-                disabled={isSearchDisabled}
-             />
-             {isSearchDisabled && <p className="text-xs text-gray-500 -mt-3 mb-2">Not available for sketches or custom textures.</p>}
-
-            <div className="mb-4">
+             <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Color</label>
                 <input type="color" value={config.selectedColor} onChange={(e) => handleConfigChange('selectedColor', e.target.value)} className="w-full h-10 p-1 bg-gray-700 border-gray-600 rounded-md"/>
             </div>
-             <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-1">Material</label>
-                <select value={config.selectedMaterial} onChange={(e) => handleConfigChange('selectedMaterial', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500" disabled={materialOptions.length === 0 || !!config.customMaterialTexture}>
-                    {materialOptions.map(item => <option key={item} value={item}>{item}</option>)}
+        </Card>
+
+        {/* Card 2: Define Style */}
+        <Card title="Define Style">
+             <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Design Style</label>
+                <select value={config.selectedDesignStyle} onChange={(e) => handleConfigChange('selectedDesignStyle', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
+                    {DESIGN_STYLE_CATEGORIES.map(category => (
+                        <optgroup key={category.name} label={category.name}>
+                            {category.items.map(item => <option key={item} value={item}>{item}</option>)}
+                        </optgroup>
+                    ))}
                 </select>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Mockup Style</label>
+                <select value={config.selectedStyle} onChange={(e) => handleConfigChange('selectedStyle', e.target.value as StyleOption)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500">
+                  {STYLE_OPTIONS.map(item => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </div>
+            <div>
                 <input
                     type="file"
                     ref={fileInputRef}
@@ -361,8 +304,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     accept="image/png, image/jpeg, image/webp"
                     className="hidden"
                 />
-                <button onClick={handleTextureUploadClick} className="text-xs text-indigo-400 hover:underline mt-1" disabled={config.selectedStyle === 'Technical Sketch Style'}>
-                   {config.selectedStyle === 'Technical Sketch Style' ? 'Custom Textures N/A for Sketches' : 'Upload Custom Fabric Texture'}
+                <button onClick={handleTextureUploadClick} className="w-full text-center text-sm bg-gray-700 hover:bg-gray-600 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed" disabled={config.selectedStyle === 'Technical Sketch Style'}>
+                   {config.selectedStyle === 'Technical Sketch Style' ? 'N/A for Sketches' : 'Upload Custom Fabric Texture'}
                 </button>
                 {config.customMaterialTexture && (
                     <div className="mt-2 flex items-center gap-2 p-2 bg-gray-900/50 rounded-md">
@@ -381,69 +324,58 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     </div>
                 )}
             </div>
-             <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-1">Design Style</label>
-                <select value={config.selectedDesignStyle} onChange={(e) => handleConfigChange('selectedDesignStyle', e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500">
-                    {DESIGN_STYLE_CATEGORIES.map(category => (
-                        <optgroup key={category.name} label={category.name}>
-                            {category.items.map(item => <option key={item} value={item}>{item}</option>)}
-                        </optgroup>
-                    ))}
+        </Card>
+
+        {/* Card 3: Advanced AI Options */}
+        <Card title="Advanced AI Options">
+             <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">AI Generation Model</label>
+                <select 
+                    value={config.selectedModel} 
+                    onChange={(e) => handleConfigChange('selectedModel', e.target.value)} 
+                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-orange-500"
+                >
+                    {AI_IMAGE_MODELS.map(model => <option key={model.value} value={model.value}>{model.name}</option>)}
                 </select>
             </div>
-             <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-1">Mockup Style</label>
-                 <select value={config.selectedStyle} onChange={(e) => handleConfigChange('selectedStyle', e.target.value as StyleOption)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:outline-none focus:ring-indigo-500">
-                    {STYLE_OPTIONS.map(item => <option key={item} value={item}>{item}</option>)}
-                </select>
-            </div>
-             <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-1">Generate Views</label>
-                <div className="grid grid-cols-4 gap-2">
+            <ToggleSwitch 
+                label="Generate Model & Scene"
+                description="Create a photorealistic model and background for your garment."
+                enabled={config.useAiModelScene} 
+                setEnabled={(val) => handleConfigChange('useAiModelScene', val)} 
+            />
+            {config.useAiModelScene && (
+                <div className="bg-gray-700/50 p-3 rounded-md space-y-2">
+                    <div>
+                        <label className="block text-xs font-medium text-gray-300 mb-1">Describe Model</label>
+                        <input type="text" value={config.aiModelPrompt} onChange={(e) => handleConfigChange('aiModelPrompt', e.target.value)} placeholder="e.g., male model, athletic build" className="w-full bg-gray-900 border border-gray-600 rounded-md py-1 px-2 text-sm"/>
+                    </div>
+                    <div>
+                       <label className="block text-xs font-medium text-gray-300 mb-1">Describe Background</label>
+                       <input type="text" value={config.aiScenePrompt} onChange={(e) => handleConfigChange('aiScenePrompt', e.target.value)} placeholder="e.g., on a city rooftop at dusk" className="w-full bg-gray-900 border border-gray-600 rounded-md py-1 px-2 text-sm"/>
+                    </div>
+                </div>
+            )}
+             <ToggleSwitch 
+                label="Enhance Style with Search"
+                description={`Use current Google trends to enhance the selected ${config.selectedDesignStyle} style.`}
+                enabled={config.useGoogleSearch} 
+                setEnabled={(val) => handleConfigChange('useGoogleSearch', val)} 
+                disabled={isSearchDisabled}
+             />
+             {isSearchDisabled && <p className="text-xs text-gray-500 -mt-3">{isImagenModel ? 'N/A for Imagen models.' : 'N/A for custom textures.'}</p>}
+
+            <fieldset className="border-t border-gray-700 pt-4">
+                <legend className="block text-sm font-medium text-gray-300 mb-2">Views to Generate</legend>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                     {VIEWS.map(view => (
-                        <button key={view} onClick={() => handleViewToggle(view)} className={`text-center py-2 rounded-md text-sm ${config.selectedViews.includes(view) ? 'bg-indigo-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
+                        <button key={view} onClick={() => handleViewToggle(view)} className={`text-center py-2 rounded-md text-xs ${config.selectedViews.includes(view) ? 'bg-orange-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
                             {view}
                         </button>
                     ))}
                 </div>
-            </div>
-        </div>
-        
-        <div className="border-t border-gray-700 pt-4">
-             <h3 className="text-lg font-semibold text-white mb-2">Presets</h3>
-             <div className="flex gap-2">
-                <select ref={presetSelectRef} onChange={handlePresetLoad} className="flex-grow bg-gray-700 border border-gray-600 rounded-md py-2 px-3" defaultValue="">
-                    <option value="" disabled>Load Preset...</option>
-                    {Object.keys(presets).map(name => <option key={name} value={name}>{name}</option>)}
-                </select>
-                <button onClick={onSavePreset} className="bg-gray-600 px-3 rounded-md hover:bg-gray-500" title="Save current settings as preset">💾</button>
-             </div>
-             {Object.keys(presets).length > 0 && (
-                <div className="text-xs mt-2 space-y-1">
-                    {Object.keys(presets).map(name => (
-                        <div key={name} className="flex justify-between items-center bg-gray-900/50 p-1 rounded">
-                            <span className="truncate pr-2">{name}</span>
-                            <button onClick={() => onDeletePreset(name)} className="text-red-500 hover:text-red-400 flex-shrink-0">🗑️</button>
-                        </div>
-                    ))}
-                </div>
-             )}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex-shrink-0 border-t border-gray-700 pt-4 flex items-center gap-2">
-        <button
-          onClick={onGenerate}
-          disabled={isLoading}
-          className="flex-grow bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:from-purple-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 disabled:opacity-50 transition-transform transform hover:scale-105"
-        >
-          {isLoading ? 'Generating...' : 'Generate Mockup'}
-        </button>
-        <button onClick={onInspireMe} disabled={isLoading} className="p-3 bg-gray-600 rounded-lg hover:bg-gray-500 disabled:opacity-50" title="Inspire Me!">
-            🎲
-        </button>
-      </div>
+            </fieldset>
+        </Card>
     </div>
   );
 };

@@ -1,11 +1,47 @@
 
-import { MockupConfig as TMockupConfig } from './components/ControlPanel';
-export type MockupConfig = TMockupConfig;
+
+export const AI_IMAGE_MODELS = [
+  { name: 'Gemini 2.5 Flash Image', value: 'gemini-2.5-flash-image' },
+  { name: 'Imagen 4.0 (High Quality)', value: 'imagen-4.0-generate-001' },
+];
+
+export interface MockupConfig {
+  easyPrompt: string;
+  selectedCategory: string;
+  selectedGarment: string;
+  selectedDesignStyle: string;
+  selectedColor: string;
+  selectedMaterial: string;
+  customMaterialTexture?: string;
+  selectedStyle: StyleOption;
+  selectedViews: string[];
+  aiApparelPrompt: string;
+  useAiApparel: boolean;
+  aiModelPrompt: string;
+  aiScenePrompt: string;
+  useAiModelScene: boolean;
+  useGoogleSearch: boolean;
+  selectedModel: string;
+}
+
+export interface GeneratedImage {
+    view: string;
+    url: string;
+}
 
 export interface GarmentCategory {
   name: string;
   items: string[];
 }
+
+// Added from EditorPanel.tsx for global access
+export interface ModificationRequest {
+  type: 'Structural' | 'Text' | 'Graphic';
+  content: string;
+  location: string;
+  style: string;
+}
+
 
 export const GARMENT_CATEGORIES: GarmentCategory[] = [
   {
@@ -202,98 +238,36 @@ export const PLACEMENT_COORDINATES: Record<string, { x: number; y: number }> = {
   'Back Panel': { x: 0.5, y: 0.5 },
 };
 
+export const BLEND_MODES: { name: string, value: GlobalCompositeOperation }[] = [
+    { name: 'Normal', value: 'source-over' },
+    { name: 'Multiply', value: 'multiply' },
+    { name: 'Screen', value: 'screen' },
+    { name: 'Overlay', value: 'overlay' },
+    { name: 'Darken', value: 'darken' },
+    { name: 'Lighten', value: 'lighten' },
+    { name: 'Color Dodge', value: 'color-dodge' },
+    { name: 'Color Burn', value: 'color-burn' },
+    { name: 'Hard Light', value: 'hard-light' },
+    { name: 'Soft Light', value: 'soft-light' },
+    { name: 'Difference', value: 'difference' },
+    { name: 'Exclusion', value: 'exclusion' },
+    { name: 'Hue', value: 'hue' },
+    { name: 'Saturation', value: 'saturation' },
+    { name: 'Color', value: 'color' },
+    { name: 'Luminosity', value: 'luminosity' },
+];
+
 
 // --- NEW DYNAMIC PROMPTS ---
 
-export const EASY_PROMPT_PARSER = `
-You are an expert fashion assistant AI. Analyze the user's request and extract the key details for a mockup generation.
-User Request: "{{prompt}}"
-
-Based on the request, find the closest matching options from the lists below and return them in a valid JSON object.
-- Garment list: ${GARMENT_CATEGORIES.map(c => c.items).flat().join(', ')}
-- Design Style list: ${DESIGN_STYLE_CATEGORIES.map(c => c.items).flat().join(', ')}
-- Color: Infer the color and provide its HEX code.
-- Material list: ${Object.values(MATERIALS_BY_GARMENT_TYPE).flat().join(', ')}
-- Style list: 'Photorealistic Mockup', 'Technical Sketch Style'
-
-The JSON object must have keys: "selectedGarment", "selectedDesignStyle", "selectedColor", "selectedMaterial", "selectedStyle".
-If a detail is not mentioned, you can omit the key or leave its value empty.
-`;
-
-export const PHOTOREALISTIC_APPAREL_PROMPT = `
-Create a high-end, e-commerce style photorealistic mockup of a single garment.
-The garment is a {{garment}} in the color {{color}}, made of {{material}}. The visual texture, wrinkles, and drape must accurately represent this material.
-The design aesthetic is {{designStyle}}.
-The image must show the {{view}} of the garment, presented in a "ghost mannequin" or "flat lay" style.
-The background must be a neutral light gray studio background (#E0E0E0) with a subtle floor shadow.
-The final image must be purely visual. It must NOT contain any text, labels, hangers, props, or human figures.
-`;
-
-export const PHOTOREALISTIC_APPAREL_PROMPT_WITH_SEARCH = `
-You are a world-class AI fashion photographer. Your goal is to create an ultra-realistic product photo of a garment, using Google Search to find real-world visual references for maximum accuracy.
-
-**Action:**
-1.  **Search Google:** Use Google Search to find high-quality reference images for the following query: "photorealistic {{color}} {{material}} {{garment}} {{designStyle}}".
-2.  **Analyze References:** Analyze the search results for key visual details, paying close attention to material texture, fabric weight, how the garment drapes and folds, common seam placements, and typical lighting for this style.
-3.  **Generate Image:** Based on your analysis, create a single, high-end, e-commerce style photorealistic mockup.
-
-**Image Requirements:**
-- **Garment:** A {{garment}}
-- **Color:** {{color}}
-- **Material:** {{material}} (The visual texture, wrinkles, and drape must accurately represent this material based on your search)
-- **Design Style:** {{designStyle}}
-- **View:** Show the {{view}} of the garment.
-- **Presentation:** Use a "ghost mannequin" or "flat lay" style.
-- **Background:** A neutral light gray studio background (#E0E0E0) with a subtle floor shadow.
-- **CRITICAL:** The final image must be purely visual. It must NOT contain any text, labels, hangers, props, or human figures.
-`;
-
-
-export const PHOTOREALISTIC_SCENE_PROMPT = `
-Create a high-end, photorealistic fashion photograph for an e-commerce campaign.
-The scene is: {{scene}}. The model is described as: {{model}}. The lighting should be professional and match the scene description.
-The model is wearing a {{garment}} in the color {{color}}, made of {{material}}. The design aesthetic is {{designStyle}}.
-The final image must showcase the {{view}} of the garment on the model, with the focus on the apparel.
-The image must be high-resolution and photorealistic. Do not add any text, logos, or watermarks.
-`;
-
-export const TECHNICAL_SKETCH_PROMPT = `
-Generate a clean, 2D technical flat sketch of a single apparel item for a fashion tech pack.
-
-- Garment: A {{garment}}
-- Design Style: {{designStyle}}
-- View: Show the {{view}} view.
-
-**CRITICAL RULES:**
-1.  The output MUST be a clean, 2D vector-style line drawing with black outlines.
-2.  The background MUST be a pure, solid white (#FFFFFF).
-3.  **ABSOLUTELY NO TEXT.** Do not add any text, labels, annotations, measurements, or callouts. The image must be purely visual.
-4.  Do not include shadows, textures, wrinkles, colors, or any photographic elements. It must be a simple line drawing.
-`;
-
-export const ADDITIONAL_VIEW_PHOTO_PROMPT = `
-You are an expert AI fashion visualizer. The user has provided an image of a garment and wants to see another view of it.
-Your task is to generate a photorealistic {{view}} view of the EXACT SAME garment shown in the provided image.
-
-**CRITICAL RULES:**
-1.  **Consistency is Key:** The generated image MUST be of the same garment. Match the color, material, texture, design style, and any unique features or graphics from the reference image perfectly.
-2.  **Maintain Style:** The new view should match the presentation style of the reference image (e.g., if it's a "ghost mannequin", the new view should also be a "ghost mannequin").
-3.  **Output:** The output must ONLY be the image of the garment from the new perspective. Do not add text or watermarks.
-`;
-
-export const ADDITIONAL_VIEW_SKETCH_PROMPT = `
-You are an expert AI fashion technical illustrator. The user has provided a technical flat sketch of a garment and wants another view.
-Your task is to generate a technical flat sketch of the {{view}} view of the EXACT SAME garment shown in the provided sketch.
-
-**CRITICAL RULES:**
-1.  **Consistency is Key:** The new sketch must perfectly match the design, proportions, and style details (like seams, stitching, etc.) of the reference sketch.
-2.  **Maintain Format:** The output MUST be a clean, 2D vector-style line drawing with black outlines on a pure white background.
-3.  **NO TEXT:** Do not add any text, labels, or annotations.
-`;
-
-
-// --- DEPRECATED ---
-// Old prompts are kept for reference but are no longer used by the new system.
+export const EASY_PROMPT_PARSER = `DEPRECATED`;
+export const PHOTOREALISTIC_APPAREL_PROMPT = `DEPRECATED`;
+export const PHOTOREALISTIC_APPAREL_PROMPT_WITH_SEARCH = `DEPRECATED`;
+export const PHOTOREALISTIC_SCENE_PROMPT = `DEPRECATED`;
+export const TECHNICAL_SKETCH_PROMPT = `DEPRECATED`;
+export const TECHNICAL_SKETCH_PROMPT_WITH_SEARCH = `DEPRECATED`;
+export const ADDITIONAL_VIEW_PHOTO_PROMPT = `DEPRECATED`;
+export const ADDITIONAL_VIEW_SKETCH_PROMPT = `DEPRECATED`;
 export const AI_APPAREL_PROMPT = `DEPRECATED`;
 export const AI_SCENE_PROMPT = `DEPRECATED`;
 export const FOOTWEAR_SKETCH_PROMPT = `DEPRECATED`;
