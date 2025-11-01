@@ -25,7 +25,7 @@ export interface DesignLayer {
 
 export const AI_IMAGE_MODELS = [
   { name: 'Gemini 2.5 Flash Image', value: 'gemini-2.5-flash-image' },
-  { name: 'Gemini 2.5 Pro (High Quality)', value: 'gemini-2.5-pro' },
+  { name: 'Imagen 4 (Highest Quality)', value: 'imagen-4.0-generate-001' },
 ];
 
 // FIX: Define and export STYLE_OPTIONS and StyleOption type

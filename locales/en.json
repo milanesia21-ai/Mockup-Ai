@@ -65,6 +65,7 @@
       "mockupStyleLabel": "Mockup Style",
       "uploadTextureButton": "Upload Custom Fabric Texture",
       "uploadTextureDisabled": "N/A for Sketches",
+      "uploadTextureDisabledImagen": "N/A for Imagen Models",
       "customTexturePreviewAlt": "Custom texture preview",
       "removeCustomTexture": "Remove custom texture"
     },
@@ -79,7 +80,7 @@
       "scenePromptPlaceholder": "e.g., on a city rooftop at sunset",
       "searchToggleLabel": "Enhance Style with Search",
       "searchToggleDescription": "Use current trends from Google to enhance the selected {style} style.",
-      "searchDisabledImageModel": "N/A for image generation models.",
+      "searchDisabledImagen": "N/A for Imagen models.",
       "searchDisabledCustomTexture": "N/A for custom textures.",
       "viewsLegend": "Views to Generate"
     },
@@ -299,6 +300,7 @@
     "invalid_data_format": "The AI returned an invalid data format. Please try again.",
     "parse_prompt_failed": "The AI could not understand the request. Try rephrasing.",
     "image_generation_unavailable": "Image generation is not available in your country due to regional restrictions.",
+    "unsupported_feature": "This feature is not supported for the selected model.",
     "imagen_no_image": "The Imagen API did not return any images. Try a different prompt or model.",
     "imagen_failed": "Failed to generate mockup with Imagen. The AI might be having issues.",
     "generation_blocked_safety": "Generation was blocked due to safety policies. Please modify your prompt.",

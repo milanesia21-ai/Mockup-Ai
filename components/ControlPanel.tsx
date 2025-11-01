@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useMemo, useRef } from 'react';
 import { GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, STYLE_OPTIONS, VIEWS, AI_IMAGE_MODELS, FIT_OPTIONS, TREND_PRESETS, GARMENT_MATERIALS } from '../constants';
 import { toast } from 'sonner';
@@ -310,8 +307,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     };
 
 
-  const isImageGenerationModel = config.selectedModel.startsWith('imagen') || config.selectedModel === 'gemini-2.5-flash-image';
-  const isSearchDisabled = !!config.customMaterialTexture || isImageGenerationModel;
+  const isImagenModel = config.selectedModel.startsWith('imagen');
+  const isSearchDisabled = !!config.customMaterialTexture || isImagenModel;
+  const isTextureUploadDisabled = config.selectedStyle === STYLE_OPTIONS.TECHNICAL_SKETCH || isImagenModel;
 
   return (
     <div className="p-4 space-y-4">
@@ -499,8 +497,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     accept="image/png, image/jpeg, image/webp"
                     className="hidden"
                 />
-                <button onClick={handleTextureUploadClick} className="w-full text-center text-sm bg-gray-700 hover:bg-gray-600 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed" disabled={config.selectedStyle === STYLE_OPTIONS.TECHNICAL_SKETCH}>
-                   {config.selectedStyle === STYLE_OPTIONS.TECHNICAL_SKETCH ? t('controlPanel.defineStyle.uploadTextureDisabled') : t('controlPanel.defineStyle.uploadTextureButton')}
+                <button onClick={handleTextureUploadClick} className="w-full text-center text-sm bg-gray-700 hover:bg-gray-600 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed" disabled={isTextureUploadDisabled}>
+                   {isTextureUploadDisabled
+                        ? (isImagenModel ? t('controlPanel.defineStyle.uploadTextureDisabledImagen') : t('controlPanel.defineStyle.uploadTextureDisabled'))
+                        : t('controlPanel.defineStyle.uploadTextureButton')
+                   }
                 </button>
                 {config.customMaterialTexture && (
                     <div className="mt-2 flex items-center gap-2 p-2 bg-gray-900/50 rounded-md">
@@ -558,7 +559,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 setEnabled={(val) => handleConfigChange('useGoogleSearch', val)} 
                 disabled={isSearchDisabled}
              />
-             {isSearchDisabled && <p className="text-xs text-gray-500 -mt-3">{config.customMaterialTexture ? t('controlPanel.advancedAI.searchDisabledCustomTexture') : t('controlPanel.advancedAI.searchDisabledImageModel')}</p>}
+             {isSearchDisabled && <p className="text-xs text-gray-500 -mt-3">{config.customMaterialTexture ? t('controlPanel.advancedAI.searchDisabledCustomTexture') : t('controlPanel.advancedAI.searchDisabledImagen')}</p>}
 
             <fieldset className="border-t border-gray-700 pt-4">
                 <legend className="block text-sm font-medium text-gray-300 mb-2">{t('controlPanel.advancedAI.viewsLegend')}</legend>

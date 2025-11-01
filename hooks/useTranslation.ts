@@ -71,6 +71,7 @@ const translations = {
         "mockupStyleLabel": "Mockup Style",
         "uploadTextureButton": "Upload Custom Fabric Texture",
         "uploadTextureDisabled": "N/A for Sketches",
+        "uploadTextureDisabledImagen": "N/A for Imagen Models",
         "customTexturePreviewAlt": "Custom texture preview",
         "removeCustomTexture": "Remove custom texture"
       },
@@ -305,6 +306,7 @@ const translations = {
       "invalid_data_format": "The AI returned an invalid data format. Please try again.",
       "parse_prompt_failed": "The AI could not understand the request. Try rephrasing.",
       "image_generation_unavailable": "Image generation is not available in your country due to regional restrictions.",
+      "unsupported_feature": "This feature is not supported for the selected model.",
       "imagen_no_image": "The Imagen API did not return any images. Try a different prompt or model.",
       "imagen_failed": "Failed to generate mockup with Imagen. The AI might be having issues.",
       "generation_blocked_safety": "Generation was blocked due to safety policies. Please modify your prompt.",
@@ -697,6 +699,7 @@ const translations = {
         "mockupStyleLabel": "Stile Mockup",
         "uploadTextureButton": "Carica Texture Tessuto Pers.",
         "uploadTextureDisabled": "N/A per Schizzi",
+        "uploadTextureDisabledImagen": "N/A per Modelli Imagen",
         "customTexturePreviewAlt": "Anteprima texture personalizzata",
         "removeCustomTexture": "Rimuovi texture personalizzata"
       },
@@ -711,7 +714,7 @@ const translations = {
         "scenePromptPlaceholder": "es. su un tetto di città al tramonto",
         "searchToggleLabel": "Migliora Stile con Ricerca",
         "searchToggleDescription": "Usa le tendenze attuali di Google per migliorare lo stile {style} selezionato.",
-        "searchDisabledImageModel": "N/A per i modelli di generazione di immagini.",
+        "searchDisabledImagen": "N/A per i modelli Imagen.",
         "searchDisabledCustomTexture": "N/A per texture personalizzate.",
         "viewsLegend": "Viste da Generare"
       },
@@ -931,6 +934,7 @@ const translations = {
       "invalid_data_format": "L'IA ha restituito un formato di dati non valido. Si prega di riprovare.",
       "parse_prompt_failed": "L'IA non è riuscita a capire la richiesta. Prova a riformularla.",
       "image_generation_unavailable": "La generazione di immagini non è disponibile nel tuo paese a causa di restrizioni regionali.",
+      "unsupported_feature": "Questa funzionalità non è supportata per il modello selezionato.",
       "imagen_no_image": "L'API di Imagen non ha restituito alcuna immagine. Prova un prompt o un modello diverso.",
       "imagen_failed": "Impossibile generare il mockup con Imagen. L'IA potrebbe avere problemi.",
       "generation_blocked_safety": "Generazione bloccata a causa delle politiche di sicurezza. Modifica il tuo prompt.",
