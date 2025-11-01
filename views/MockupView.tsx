@@ -1,41 +1,34 @@
 
 
-
 import React, { useState, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { toast } from 'sonner';
 
 import { ControlPanel } from '../components/ControlPanel';
-// FIX: Import DesignLayer from constants instead of EditorPanel
 import { EditorPanel, SketchToolsConfig } from '../components/EditorPanel';
 import { DisplayArea } from '../components/DisplayArea';
-// FIX: Import MagicWand icon component to resolve reference error.
 import { MagicWand } from '../components/Icons';
 
 import {
-    MockupConfig,
-    GeneratedImage,
-    ModificationRequest,
-    GARMENT_CATEGORIES,
-    DESIGN_STYLE_CATEGORIES,
-    GARMENT_COLORS,
-    DesignLayer,
+    MockupConfig, GeneratedImage, ModificationRequest, GARMENT_CATEGORIES,
+    DESIGN_STYLE_CATEGORIES, DesignLayer, STYLE_OPTIONS, FIT_OPTIONS, TREND_PRESETS
 } from '../constants';
 import * as gemini from '../services/geminiService';
+import { GeminiError } from '../services/errors';
 import type { GroundingSource } from '../services/geminiService';
+import { useTranslation } from '../hooks/useTranslation';
 
 const uuidv4 = () => crypto.randomUUID();
 
 const DEFAULT_CONFIG: MockupConfig = {
     easyPrompt: '',
-    selectedCategory: 'TOP - FELPE E GIACCHE CON CAPPUCCIO',
-    selectedGarment: 'Felpa pullover con cappuccio (con tasca a marsupio)',
-    selectedDesignStyle: '[Streetwear]',
+    selectedCategory: 'garmentCategory.tops_sweatshirts_hoodies',
+    selectedGarment: 'garment.hoodie_pullover',
+    selectedDesignStyle: 'designStyle.streetwear',
     selectedColor: '#1a1a1a',
-    aiMaterialPrompt: 'Pile',
-    fit: 'Regolare',
-    // FIX: Changed 'Mockup Fotorealistico' to match StyleOption type.
-    selectedStyle: 'Photorealistic Mockup',
-    selectedViews: ['Fronte'],
+    aiMaterialPrompt: 'Pile', // This will be overwritten by translation
+    fit: 'fit.regular',
+    selectedStyle: STYLE_OPTIONS.PHOTOREALISTIC,
+    selectedViews: ['Front'],
     aiApparelPrompt: '',
     useAiApparel: false,
     aiModelPrompt: 'modello maschile, corporatura atletica, in piedi su sfondo neutro',
@@ -45,7 +38,7 @@ const DEFAULT_CONFIG: MockupConfig = {
     selectedModel: 'gemini-2.5-flash-image',
 };
 
-// --- Reducer for State Management ---
+// --- Reducer per la Gestione dello Stato ---
 
 interface EditorState {
     layers: DesignLayer[];
@@ -71,7 +64,6 @@ type EditorAction =
     | { type: 'SET_ACTIVE_LAYER'; payload: { id: string | null } }
     | { type: 'REORDER_LAYER'; payload: { fromIndex: number; toIndex: number } }
     | { type: 'SET_STATE'; payload: EditorState }
-    // FIX: Add UNDO and REDO types to the discriminated union to fix TS errors.
     | { type: 'RESET_STATE'; payload?: DesignLayer[] }
     | { type: 'UNDO' }
     | { type: 'REDO' };
@@ -137,7 +129,7 @@ const historyReducer = (
         }
     };
     
-    // Actions that create a history entry
+    // Azioni che creano una voce di cronologia
     const committingActions = ['ADD_LAYER', 'DELETE_LAYER', 'COMMIT_UPDATE', 'REORDER_LAYER', 'RESET_STATE'];
     
     if (action.type === 'UNDO') {
@@ -178,7 +170,7 @@ const historyReducer = (
         };
     }
 
-    // For non-committing actions like transient updates
+    // Per azioni non di commit come aggiornamenti transitori
     return { ...state, current: newCurrent };
 };
 
@@ -201,13 +193,18 @@ const TabButton: React.FC<{
 );
 
 export const MockupView: React.FC = () => {
+    const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
-    const [config, setConfig] = useState<MockupConfig>(DEFAULT_CONFIG);
+    const [config, setConfig] = useState<MockupConfig>({
+        ...DEFAULT_CONFIG,
+        aiMaterialPrompt: t('material.fleece'),
+    });
     const [baseImages, setBaseImages] = useState<GeneratedImage[]>([]);
     const [cleanBaseImages, setCleanBaseImages] = useState<GeneratedImage[]>([]);
     const [finalImage, setFinalImage] = useState<string | null>(null);
     const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
     const [step, setStep] = useState<AppStep>('generate');
+    
     
     const [state, dispatch] = useReducer(historyReducer, {
         current: initialEditorState,
@@ -241,8 +238,7 @@ export const MockupView: React.FC = () => {
         const currentBaseImages = imagesToRenderOn || baseImages;
         if (!currentBaseImages.length || !layers.length) {
             if (layers.length === 0 && imagesToRenderOn) {
-                 // This case happens after an AI edit with no layers. We just show the edited image.
-                 return "Modifica AI applicata!";
+                 return;
             }
             return;
         };
@@ -271,17 +267,20 @@ export const MockupView: React.FC = () => {
             
             setBaseImages(finalImages);
             dispatch({ type: 'RESET_STATE' });
-            return "Mockup realistico renderizzato e propagato!";
+            return t('toasts.renderingComposite.success');
         })();
         
          toast.promise(promise, {
-            loading: 'Rendering del composito realistico e propagazione...',
+            loading: t('toasts.renderingComposite.loading'),
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => {
+                const messageKey = err instanceof GeminiError ? `errors.${err.code}` : 'errors.unknown';
+                return t(messageKey, err.message);
+            }
         });
 
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [baseImages, layers, cleanBaseImages, config.selectedDesignStyle]);
+    }, [baseImages, layers, cleanBaseImages, config.selectedDesignStyle, t]);
 
 
     const handleGenerateMockup = useCallback(async () => {
@@ -293,7 +292,7 @@ export const MockupView: React.FC = () => {
         setGroundingSources([]);
 
         const generationTask = async () => {
-            if (config.selectedViews.length === 0) throw new Error("Seleziona almeno una vista.");
+            if (config.selectedViews.length === 0) throw new GeminiError('select_view', 'Please select at least one view.');
             
             const newImages: GeneratedImage[] = [];
             let combinedSources: GroundingSource[] = [];
@@ -319,17 +318,20 @@ export const MockupView: React.FC = () => {
             setCleanBaseImages(newImages);
             setGroundingSources(uniqueSources);
             setStep('design');
-            return `${newImages.length} vista/e del mockup generate!`;
+            return t('toasts.generatingViews.success').replace('{count}', newImages.length.toString());
         };
         
         const promise = generationTask();
         toast.promise(promise, {
-            loading: 'Generazione delle viste del mockup in corso...',
+            loading: t('toasts.generatingViews.loading'),
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => {
+                const messageKey = err instanceof GeminiError ? `errors.${err.code}` : 'errors.unknown';
+                return t(messageKey, err.message);
+            }
         });
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [config]);
+    }, [config, t]);
 
     const handleInspireMe = useCallback(async () => {
         setIsLoading(true);
@@ -337,24 +339,26 @@ export const MockupView: React.FC = () => {
         const allDesignStyles = DESIGN_STYLE_CATEGORIES.flatMap(cat => cat.items);
         const randomGarment = allGarments[Math.floor(Math.random() * allGarments.length)];
         const randomDesignStyle = allDesignStyles[Math.floor(Math.random() * allDesignStyles.length)];
-        const randomColorString = GARMENT_COLORS[Math.floor(Math.random() * GARMENT_COLORS.length)];
-        const hexMatch = randomColorString.match(/#([0-9a-fA-F]{6})/);
-        const randomColor = hexMatch ? hexMatch[0] : '#000000';
+        
+        const randomColor = `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`;
 
-        const promise = gemini.generateInspirationPrompt(randomGarment, randomDesignStyle, randomColor, config.selectedStyle)
+        const promise = gemini.generateInspirationPrompt(t(randomGarment), t(randomDesignStyle), randomColor, t(config.selectedStyle))
             .then(idea => {
                 setConfig(prev => ({...prev, aiApparelPrompt: idea, useAiApparel: true}));
-                toast.info("Passato alla modalità 'Genera Indumento Personalizzato'.");
-                return `Nuova Idea: "${idea}"`;
+                toast.info(t('toasts.inspiring.info'));
+                return t('toasts.inspiring.success').replace('{idea}', idea);
             });
         
         toast.promise(promise, {
-            loading: 'Sto ricevendo un\'idea dall\'IA...',
+            loading: t('toasts.inspiring.loading'),
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => {
+                 const messageKey = err instanceof GeminiError ? `errors.${err.code}` : 'errors.unknown';
+                return t(messageKey, err.message);
+            }
         });
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [config.selectedStyle]);
+    }, [config.selectedStyle, t]);
 
     const isGenerationReady = useMemo(() => {
         if (config.useAiApparel) return config.aiApparelPrompt.trim().length > 0;
@@ -362,63 +366,66 @@ export const MockupView: React.FC = () => {
     }, [config]);
 
     const handleSavePreset = () => {
-        const name = prompt("Inserisci un nome per questo preset:");
+        const name = prompt(t('profile.save'));
         if (name) {
             if (presets[name]) {
-                if (!window.confirm(`Un preset di nome "${name}" esiste già. Sovrascriverlo?`)) {
+                if (!window.confirm(t('toasts.presetExists').replace('{name}', name))) {
                     return;
                 }
             }
             const newPresets = { ...presets, [name]: config };
             setPresets(newPresets);
             localStorage.setItem('mockupPresets', JSON.stringify(newPresets));
-            toast.success(`Preset "${name}" salvato!`);
+            toast.success(t('toasts.presetSaved').replace('{name}', name));
         }
     };
 
     const handleLoadPreset = (name: string) => {
         if (presets[name]) {
             setConfig(presets[name]);
-            toast.info(`Preset "${name}" caricato.`);
+            toast.info(t('toasts.presetLoaded').replace('{name}', name));
         }
     };
     
     const handleDeletePreset = (name: string) => {
-        if (window.confirm(`Sei sicuro di voler eliminare il preset "${name}"?`)) {
+        if (window.confirm(t('profile.accountManagement.deleteAccount'))) {
             const newPresets = { ...presets };
             delete newPresets[name];
             setPresets(newPresets);
             localStorage.setItem('mockupPresets', JSON.stringify(newPresets));
-            toast.success(`Preset "${name}" eliminato.`);
+            toast.success(t('toasts.presetDeleted').replace('{name}', name));
         }
     };
 
     const handleGenerateGraphic = useCallback(async (prompt: string, color: string, placement: string, designStyle: string, texturePrompt?: string) => {
         setIsLoading(true);
-        const promise = gemini.generateGraphic(prompt, config.selectedGarment, placement, color, designStyle, texturePrompt, config.selectedModel)
+        const promise = gemini.generateGraphic(prompt, t(config.selectedGarment), placement, color, t(designStyle), texturePrompt, config.selectedModel)
             .then(imageUrl => {
                 dispatch({ type: 'ADD_LAYER', payload: { type: 'image', content: imageUrl }});
-                return "Grafica AI aggiunta come nuovo livello!";
+                return t('toasts.generatingGraphic.success');
             });
             
         toast.promise(promise, {
-            loading: 'Generazione grafica AI in corso...',
+            loading: t('toasts.generatingGraphic.loading'),
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => {
+                 const messageKey = err instanceof GeminiError ? `errors.${err.code}` : 'errors.unknown';
+                return t(messageKey, err.message);
+            }
         });
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [config.selectedGarment, config.selectedModel]);
+    }, [config.selectedGarment, config.selectedModel, t]);
     
     const handleAiEdit = useCallback(async (modification: ModificationRequest) => {
         if (!baseImages.length) {
-            toast.error("Genera prima un mockup di base.");
+            toast.error(t('errors.generate_base_first'));
             return;
         }
         setIsLoading(true);
         
         const primaryView = baseImages[0];
         
-        const promise = gemini.modifyGarmentImage(primaryView.url, modification, config.selectedDesignStyle)
+        const promise = gemini.modifyGarmentImage(primaryView.url, modification, t(config.selectedDesignStyle))
             .then(async (modifiedImageUrl) => {
                 const newBaseImages = [{ ...primaryView, url: modifiedImageUrl }];
                 const newCleanBaseImages = [...cleanBaseImages];
@@ -437,82 +444,85 @@ export const MockupView: React.FC = () => {
                 }
                 
                 setBaseImages(newBaseImages);
-                toast.success("Indumento modificato con successo! Riapplicazione dei livelli...");
+                toast.success(t('toasts.garmentModified'));
                 
                 await handleRenderRealistic(newBaseImages);
-                return "Modifica AI applicata e livelli ri-renderizzati!";
+                return t('toasts.applyingEdit.success');
             });
             
         toast.promise(promise, {
-            loading: 'Applicazione delle modifiche AI all\'indumento base...',
+            loading: t('toasts.applyingEdit.loading'),
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => {
+                 const messageKey = err instanceof GeminiError ? `errors.${err.code}` : 'errors.unknown';
+                return t(messageKey, err.message);
+            }
         });
         
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, [baseImages, cleanBaseImages, config, layers, handleRenderRealistic]);
+    }, [baseImages, cleanBaseImages, config, t, handleRenderRealistic]);
 
     
-    const handleLoadTrendPreset = (preset: string) => {
+    const handleLoadTrendPreset = (presetKey: string) => {
         let newConfig: Partial<MockupConfig> = {};
-        switch (preset) {
-            case "T-shirt Grunge anni '90":
+        switch (presetKey) {
+            case "trend.90s_grunge_tee":
                 newConfig = {
-                    selectedCategory: 'TOP - CASUAL',
-                    selectedGarment: 'T-shirt base (girocollo)',
-                    selectedDesignStyle: '[Grunge Anni \'90]',
-                    fit: 'Oversize / Largo',
-                    aiMaterialPrompt: "Cotone pesante nero sbiadito 'vintage'",
+                    selectedCategory: 'garmentCategory.tops_casual',
+                    selectedGarment: 'garment.tshirt_basic_crew',
+                    selectedDesignStyle: 'designStyle.90s_grunge',
+                    fit: 'fit.oversized',
+                    aiMaterialPrompt: t('material.heavyweight_cotton'),
                     selectedColor: '#2a2a2a',
                 };
                 break;
-            case "Y2K Juicy":
+            case "trend.y2k_juicy":
                  newConfig = {
-                    selectedCategory: 'TOP - FELPE E GIACCHE CON CAPPUCCIO',
-                    selectedGarment: 'Felpa con cappuccio e zip',
-                    selectedDesignStyle: '[Y2K/Primi Anni 2000]',
-                    fit: 'Corto (Cropped)',
-                    aiMaterialPrompt: "Velluto",
+                    selectedCategory: 'garmentCategory.tops_sweatshirts_hoodies',
+                    selectedGarment: 'garment.zip_up_hoodie',
+                    selectedDesignStyle: 'designStyle.y2k_early_2000s',
+                    fit: 'fit.cropped',
+                    aiMaterialPrompt: t('material.velour'),
                     selectedColor: '#ff69b4', // Hot Pink
                 };
                 break;
-             case "Tech Gorpcore":
+             case "trend.gorpcore_tech":
                  newConfig = {
-                    selectedCategory: 'CAPISPALLA - GIACCHE',
-                    selectedGarment: 'Anorak',
-                    selectedDesignStyle: '[Gorpcore/Outdoor]',
-                    fit: 'Regolare',
-                    aiMaterialPrompt: "Nylon ripstop impermeabile con cuciture nastrate",
+                    selectedCategory: 'garmentCategory.outerwear_jackets',
+                    selectedGarment: 'garment.anorak',
+                    selectedDesignStyle: 'designStyle.gorpcore_outdoor',
+                    fit: 'fit.regular',
+                    aiMaterialPrompt: t('material.ripstop'),
                     selectedColor: '#808000', // Olive
                 };
                 break;
-            case "Streetwear Minimalista":
+            case "trend.minimalist_streetwear":
                  newConfig = {
-                    selectedCategory: 'TOP - FELPE E GIACCHE CON CAPPUCCIO',
-                    selectedGarment: 'Felpa girocollo',
-                    selectedDesignStyle: '[Minimalista/Normcore]',
-                    fit: 'Oversize / Largo',
-                    aiMaterialPrompt: "Cotone loopback pesante premium",
+                    selectedCategory: 'garmentCategory.tops_sweatshirts_hoodies',
+                    selectedGarment: 'garment.crewneck_sweatshirt',
+                    selectedDesignStyle: 'designStyle.minimalist_normcore',
+                    fit: 'fit.oversized',
+                    aiMaterialPrompt: t('material.loopback_cotton'),
                     selectedColor: '#e5e5e5', // Light grey
                 };
                 break;
-             case "Utility Darkwear":
+             case "trend.darkwear_utility":
                  newConfig = {
-                    selectedCategory: 'CAPISPALLA - GILET',
-                    selectedGarment: 'Gilet (smanicato)',
-                    selectedDesignStyle: '[Cyberpunk/Techwear]',
-                    fit: 'Regolare',
-                    aiMaterialPrompt: "Tela tecnica nera opaca con tasche multiple e cinghie",
+                    selectedCategory: 'garmentCategory.outerwear_vests',
+                    selectedGarment: 'garment.vest_gilet',
+                    selectedDesignStyle: 'designStyle.cyberpunk_techwear',
+                    fit: 'fit.regular',
+                    aiMaterialPrompt: t('material.heavyweight_canvas'),
                     selectedColor: '#1a1a1a',
                 };
                 break;
         }
         setConfig(prev => ({ ...prev, ...newConfig, useAiApparel: false }));
-        toast.success(`Preset "${preset}" caricato!`);
+        toast.success(t('toasts.trendPresetLoaded').replace('{preset}', t(presetKey)));
     };
     
     const handleGenerateGarmentConcept = async (styleA: string, styleB: string) => {
-        const promise = gemini.generateGarmentConcept(config.selectedGarment, styleA, styleB)
+        const promise = gemini.generateGarmentConcept(t(config.selectedGarment), t(styleA), t(styleB))
             .then(concept => {
                 setConfig(prev => ({
                     ...prev,
@@ -520,13 +530,16 @@ export const MockupView: React.FC = () => {
                     useAiApparel: true,
                     selectedDesignStyle: styleA, // Prioritize style A for persona
                 }));
-                return "Concept AI generato e caricato!";
+                return t('toasts.generatingConcept.success');
             });
         
         toast.promise(promise, {
-            loading: 'L\'IA sta facendo brainstorming...',
+            loading: t('toasts.generatingConcept.loading'),
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => {
+                 const messageKey = err instanceof GeminiError ? `errors.${err.code}` : 'errors.unknown';
+                return t(messageKey, err.message);
+            }
         });
 
         await promise;
@@ -537,17 +550,20 @@ export const MockupView: React.FC = () => {
         const promise = gemini.parseEasyPrompt(prompt)
             .then(parsedConfig => {
                 setConfig(prev => ({ ...prev, ...parsedConfig }));
-                return "L'IA ha configurato le opzioni per te!";
+                return t('toasts.parsingPrompt.success');
             });
 
         toast.promise(promise, {
-            loading: 'Analisi del tuo prompt...',
+            loading: t('toasts.parsingPrompt.loading'),
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => {
+                 const messageKey = err instanceof GeminiError ? `errors.${err.code}` : 'errors.unknown';
+                return t(messageKey, err.message);
+            }
         });
 
         promise.catch(() => {}).finally(() => setIsLoading(false));
-    }, []);
+    }, [t]);
 
 
     const renderActivePanel = () => {
@@ -594,8 +610,8 @@ export const MockupView: React.FC = () => {
     return (
         <main className="flex flex-col flex-grow min-h-0">
             <div className="flex-shrink-0 bg-gray-900 flex border-b border-gray-700 shadow-md">
-                <TabButton title="1. Genera" active={step === 'generate'} onClick={() => setStep('generate')} />
-                <TabButton title="2. Progetta" active={step === 'design'} onClick={() => setStep('design')} disabled={baseImages.length === 0} />
+                <TabButton title={t('tabs.generate')} active={step === 'generate'} onClick={() => setStep('generate')} />
+                <TabButton title={t('tabs.design')} active={step === 'design'} onClick={() => setStep('design')} disabled={baseImages.length === 0} />
             </div>
 
             <div className="flex-grow grid grid-cols-1 md:grid-cols-[400px_1fr] lg:grid-cols-[450px_1fr] overflow-hidden">
@@ -620,11 +636,11 @@ export const MockupView: React.FC = () => {
                         disabled={isLoading || !isGenerationReady}
                         className="flex-grow bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:from-orange-600 hover:to-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-transform transform hover:scale-105"
                     >
-                        {isLoading ? 'Generazione...' : 'Genera Mockup'}
+                        {isLoading ? t('generateButton.loading') : t('generateButton.default')}
                     </button>
-                    <button onClick={handleInspireMe} disabled={isLoading} className="px-4 py-3 bg-gray-700 rounded-lg hover:bg-gray-600 disabled:opacity-50 flex items-center gap-2 text-white" title="Ispirami!">
+                    <button onClick={handleInspireMe} disabled={isLoading} className="px-4 py-3 bg-gray-700 rounded-lg hover:bg-gray-600 disabled:opacity-50 flex items-center gap-2 text-white" title={t('inspireButton.title')}>
                         <MagicWand className="h-5 w-5" />
-                        <span className="font-semibold hidden lg:inline">Ispirami</span>
+                        <span className="font-semibold hidden lg:inline">{t('inspireButton.default')}</span>
                     </button>
                 </footer>
             )}

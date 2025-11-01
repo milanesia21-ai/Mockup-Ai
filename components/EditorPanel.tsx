@@ -1,10 +1,6 @@
-
-
-
 import React, { useState, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
-// FIX: Import DesignLayer from constants.ts after it was moved.
-import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS, BLEND_MODES, ModificationRequest, GARMENT_CATEGORIES, DESIGN_STYLE_CATEGORIES, GARMENT_COLORS, DesignLayer } from '../constants';
+import { FONT_OPTIONS, GARMENT_PART_PLACEMENTS, BLEND_MODES, ModificationRequest, DESIGN_STYLE_CATEGORIES, DesignLayer, STYLE_OPTIONS } from '../constants';
 import { generateInspirationPrompt, generateColorPalette, applyGraphicFilter } from '../services/geminiService';
 import { 
     Undo as UndoIcon, 
@@ -22,8 +18,7 @@ import {
     AlignLeft,
     AlignRight,
 } from './Icons';
-
-// FIX: Moved DesignLayer interface to constants.ts to be shared across components/services.
+import { useTranslation } from '../hooks/useTranslation';
 
 export interface SketchToolsConfig {
     brushType: 'pencil' | 'pen' | 'eraser';
@@ -73,17 +68,20 @@ const StopIcon: React.FC = () => (
     </svg>
 );
 
-const LoadingSpinner: React.FC = () => (
-    <div className="flex items-center justify-center">
-        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <span>Elaborazione...</span>
-    </div>
-);
+const LoadingSpinner: React.FC = () => {
+    const { t } = useTranslation();
+    return (
+        <div className="flex items-center justify-center">
+            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>{t('editorPanel.processing')}</span>
+        </div>
+    );
+};
 
-// Helper to read file as Data URL
+// Helper per leggere il file come Data URL
 const fileToDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -123,7 +121,6 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const [graphicColor, setGraphicColor] = useState('#FFFFFF');
     const [graphicPlacement, setGraphicPlacement] = useState<string>('');
     const [modificationRequest, setModificationRequest] = useState<ModificationRequest>({
-        // FIX: Changed 'Strutturale' to 'Structural' to match type definition.
         type: 'Structural',
         content: '',
         location: '',
@@ -136,17 +133,18 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const recognitionRef = useRef<any>(null);
     const dragItem = useRef<number | null>(null);
     const dragOverItem = useRef<number | null>(null);
+    const { t, language } = useTranslation();
     
     const activeLayer = useMemo(() => layers.find(l => l.id === activeLayerId), [layers, activeLayerId]);
+    const modificationTypes: ModificationRequest['type'][] = ['Structural', 'Text', 'Graphic'];
 
     const placementOptions = useMemo(() => {
-        const garmentDescLower = garmentDescription.toLowerCase();
         const garmentKey = Object.keys(GARMENT_PART_PLACEMENTS)
             .sort((a, b) => b.length - a.length)
-            .find(key => garmentDescLower.includes(key.toLowerCase()));
+            .find(key => t(garmentDescription).toLowerCase().includes(key.toLowerCase()));
         
         return garmentKey ? GARMENT_PART_PLACEMENTS[garmentKey] : [];
-    }, [garmentDescription]);
+    }, [garmentDescription, t]);
     
     useMemo(() => {
         if (placementOptions.length > 0) {
@@ -167,7 +165,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 onAddLayer({ type: 'image', content: imageDataUrl });
            } catch (error) {
                 console.error("Errore durante la lettura del file:", error);
-                toast.error('Impossibile leggere il file.');
+                toast.error(t('toasts.fileReadError'));
            }
         }
         e.target.value = '';
@@ -176,26 +174,19 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const handleInspireMeClick = async () => {
         setIsInspiring(true);
 
-        // Get random values for a more varied inspiration
-        const allGarments = GARMENT_CATEGORIES.flatMap(cat => cat.items);
         const allDesignStyles = DESIGN_STYLE_CATEGORIES.flatMap(cat => cat.items);
-        
-        const randomGarment = allGarments[Math.floor(Math.random() * allGarments.length)];
         const randomDesignStyle = allDesignStyles[Math.floor(Math.random() * allDesignStyles.length)];
-        
-        const randomColorString = GARMENT_COLORS[Math.floor(Math.random() * GARMENT_COLORS.length)];
-        const hexMatch = randomColorString.match(/#([0-9a-fA-F]{6})/);
-        const randomColor = hexMatch ? hexMatch[0] : '#000000';
+        const randomColor = `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`;
 
-        const promise = generateInspirationPrompt(randomGarment, randomDesignStyle, randomColor, selectedStyle);
+        const promise = generateInspirationPrompt(t(garmentDescription), t(randomDesignStyle), randomColor, t(selectedStyle));
 
         toast.promise(promise, {
-            loading: 'Sto ricevendo un\'idea dall\'IA...',
+            loading: t('toasts.inspiring.loading'),
             success: (idea) => {
                 setGraphicPrompt(idea);
-                return 'Idea generata! ✨';
+                return t('toasts.inspiring.success').replace('{idea}', idea);
             },
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
         });
 
         promise.catch(() => {}).finally(() => setIsInspiring(false));
@@ -203,15 +194,15 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
      const handleSuggestColors = async () => {
         setIsSuggestingColors(true);
-        const promise = generateColorPalette(garmentColor, designStyle);
+        const promise = generateColorPalette(garmentColor, t(designStyle));
 
         toast.promise(promise, {
-            loading: 'Generazione della palette di colori...',
+            loading: t('toasts.generatingConcept.loading'),
             success: (palette) => {
                 setSuggestedPalette(palette);
                 return 'Palette suggerita! 🎨';
             },
-            error: (err) => err instanceof Error ? err.message : 'Impossibile suggerire i colori.',
+            error: (err: any) => err instanceof Error ? err.message : 'Impossibile suggerire i colori.',
         });
 
         promise.catch(() => {}).finally(() => setIsSuggestingColors(false));
@@ -220,39 +211,36 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     const handleVoiceInput = () => {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognition) {
-          toast.error("Il riconoscimento vocale non è supportato nel tuo browser.");
+          toast.error(t('toasts.micNotSupported'));
           return;
       }
 
       if (isRecording) {
           recognitionRef.current?.stop();
-          return; // onend will handle state changes
+          return; // onend si occuperà dei cambi di stato
       }
 
       recognitionRef.current = new SpeechRecognition();
       const recognition = recognitionRef.current;
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = navigator.language || 'it-IT'; // Use browser language for better accuracy
+      recognition.lang = language || 'it-IT'; // Usa la lingua del browser per una migliore precisione
 
       recognition.onstart = () => {
           setIsRecording(true);
-          toast.info("Registrazione avviata. Pronuncia la tua richiesta di modifica.");
+          toast.info(t('toasts.micRecordingStarted'));
       };
 
       recognition.onend = () => {
           setIsRecording(false);
           recognitionRef.current = null;
-          toast.success("Registrazione interrotta.");
+          toast.success(t('toasts.micRecordingStopped'));
       };
 
       recognition.onerror = (event: any) => {
           console.error("Errore riconoscimento vocale", event.error);
-          let errorMessage = "Si è verificato un errore sconosciuto.";
-          if (event.error === 'no-speech') errorMessage = "Nessun discorso rilevato.";
-          else if (event.error === 'audio-capture') errorMessage = "Nessun microfono trovato.";
-          else if (event.error === 'not-allowed') errorMessage = "Accesso al microfono negato.";
-          toast.error(errorMessage);
+          const errorKey = `toasts.micError.${event.error || 'unknown'}`;
+          toast.error(t(errorKey, t('toasts.micError.unknown')));
           setIsRecording(false);
       };
 
@@ -286,13 +274,13 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         const promise = applyGraphicFilter(activeLayer.content, filterType)
             .then(newImageUrl => {
                 onUpdateLayer(activeLayer.id, { content: newImageUrl }, true);
-                return `Filtro ${filterType} applicato con successo!`;
+                return t('toasts.applyingFilter.success').replace('{filterType}', filterType);
             });
 
         toast.promise(promise, {
-            loading: `Applicazione filtro ${filterType}...`,
+            loading: t('toasts.applyingFilter.loading').replace('{filterType}', filterType),
             success: (message) => message,
-            error: (err) => err instanceof Error ? err.message : 'Si è verificato un errore sconosciuto.',
+            error: (err: any) => err instanceof Error ? err.message : t('errors.unknown'),
         });
         
         promise.catch(() => {}).finally(() => setIsLoading(false));
@@ -307,47 +295,47 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         {/* --- Generate Graphic --- */}
                         <div>
                           <div className="flex justify-between items-center mb-2">
-                            <h3 className="text-lg font-semibold text-white">Genera Grafica AI</h3>
+                            <h3 className="text-lg font-semibold text-white">{t('editorPanel.addTab.generateTitle')}</h3>
                             <button 
                               onClick={handleInspireMeClick} 
                               disabled={isLoading || isInspiring}
                               className="flex items-center gap-2 text-sm bg-orange-600/20 text-orange-300 px-3 py-2 rounded-lg hover:bg-orange-600/40 disabled:opacity-50 transition-colors"
-                              title="Lascia che l'IA suggerisca un'idea di design"
+                              title={t('editorPanel.addTab.inspireTitle')}
                             >
                               <span>🪄</span>
-                              <span>Ispirami</span>
+                              <span>{t('editorPanel.addTab.inspireButton')}</span>
                             </button>
                           </div>
                           <textarea
                               value={graphicPrompt}
                               onChange={(e) => setGraphicPrompt(e.target.value)}
-                              placeholder="es. Una fenice in stile retrò, arte vettoriale"
+                              placeholder={t('editorPanel.addTab.promptPlaceholder')}
                               className="w-full h-24 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white resize-none"
                               disabled={isLoading || isInspiring}
                           />
                            <div className="mt-4">
-                              <label className="block text-sm font-medium text-gray-300 mb-1">Prompt Texture (Opzionale)</label>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.addTab.texturePromptLabel')}</label>
                               <input
                                   type="text"
                                   value={texturePrompt}
                                   onChange={(e) => setTexturePrompt(e.target.value)}
-                                  placeholder="es. toppa ricamata, pelle, denim"
+                                  placeholder={t('editorPanel.addTab.texturePromptPlaceholder')}
                                   className="w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white"
                                   disabled={isLoading}
                               />
                           </div>
                           <div className="grid grid-cols-2 gap-4 mt-4">
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Posizionamento</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.addTab.placementLabel')}</label>
                                 <select value={graphicPlacement} onChange={(e) => setGraphicPlacement(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3" disabled={isLoading || placementOptions.length === 0}>
                                     {placementOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                 </select>
                             </div>
                             <div>
                                 <div className="flex justify-between items-center mb-1">
-                                    <label className="block text-sm font-medium text-gray-300">Colore</label>
+                                    <label className="block text-sm font-medium text-gray-300">{t('editorPanel.addTab.colorLabel')}</label>
                                     <button onClick={handleSuggestColors} disabled={isLoading || isSuggestingColors} className="text-xs text-orange-400 hover:underline">
-                                        {isSuggestingColors ? '...' : 'Suggerisci'}
+                                        {isSuggestingColors ? '...' : t('editorPanel.addTab.suggestButton')}
                                     </button>
                                 </div>
                                 <input type="color" value={graphicColor} onChange={(e) => setGraphicColor(e.target.value)} className="w-full h-[38px] p-1 bg-gray-700 border-gray-600 rounded-md"/>
@@ -365,333 +353,320 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                               disabled={isLoading || isInspiring || !graphicPrompt || !graphicPlacement}
                               className="w-full mt-4 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:opacity-50"
                           >
-                              {isLoading ? <LoadingSpinner /> : 'Genera e Aggiungi ai Livelli'}
+                              {isLoading ? <LoadingSpinner /> : t('editorPanel.addTab.generateButton')}
                           </button>
                         </div>
                         
                         <div className="border-t border-gray-700"></div>
 
-                        {/* Add Text, Shape, Sketch Layer */}
+                        {/* --- Base Elements --- */}
                         <div>
-                            <h3 className="text-lg font-semibold text-white mb-2">Aggiungi Elementi Base</h3>
+                            <h3 className="text-lg font-semibold text-white mb-2">{t('editorPanel.addTab.baseElementsTitle')}</h3>
                             <div className="grid grid-cols-2 gap-2">
-                                <button onClick={() => onAddLayer({type: 'text', content: 'Ciao Mondo', fontFamily: 'Arial', fontWeight: 'normal', fontSize: 50, color: '#FFFFFF', textAlign: 'center'})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Aggiungi Testo</button>
-                                <button onClick={() => onAddLayer({type: 'drawing', content: '', size: {width: 1, height: 1}, position: {x: 0.5, y: 0.5}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">
-                                  Livello Schizzo
-                                </button>
-                                <button onClick={() => onAddLayer({type: 'shape', content: 'rectangle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Rettangolo</button>
-                                <button onClick={() => onAddLayer({type: 'shape', content: 'circle', fill: '#FFFFFF', size: {width: 0.25, height: 0.25}})} className="bg-gray-700 hover:bg-gray-600 p-3 rounded-lg text-center text-sm">Cerchio</button>
+                                <button onClick={() => onAddLayer({ type: 'text', content: 'Hello World', fontFamily: 'Arial', color: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addText')}</button>
+                                <button onClick={() => onAddLayer({ type: 'drawing', content: '' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addSketchLayer')}</button>
+                                <button onClick={() => onAddLayer({ type: 'shape', content: 'rectangle', fill: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addRectangle')}</button>
+                                <button onClick={() => onAddLayer({ type: 'shape', content: 'circle', fill: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addCircle')}</button>
                             </div>
                         </div>
-                        
-                        {/* Upload */}
-                         <div>
-                            <h3 className="text-lg font-semibold text-white">Carica Grafica</h3>
-                             <div className="mt-2 relative border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-orange-500 transition-colors">
-                                <input type="file" id="upload-input" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileUpload} accept="image/png, image/jpeg"/>
-                                <label htmlFor="upload-input" className="cursor-pointer">
-                                    <UploadIcon className="mx-auto h-8 w-8 text-gray-500" />
-                                    <p className="mt-2 text-gray-400">Clicca per caricare</p>
-                                    <p className="text-xs text-gray-500">PNG, JPG</p>
-                                </label>
-                             </div>
-                         </div>
+
+                        <div className="border-t border-gray-700"></div>
+
+                        {/* --- Upload Graphic --- */}
+                        <div>
+                            <h3 className="text-lg font-semibold text-white mb-2">{t('editorPanel.addTab.uploadTitle')}</h3>
+                            <label htmlFor="file-upload" className="w-full cursor-pointer flex flex-col items-center justify-center p-4 bg-gray-700 hover:bg-gray-600 rounded-lg border-2 border-dashed border-gray-500">
+                                <UploadIcon className="h-8 w-8 text-gray-400" />
+                                <span className="mt-2 text-sm text-gray-400">{t('editorPanel.addTab.uploadButton')}</span>
+                                <span className="text-xs text-gray-500">{t('editorPanel.addTab.uploadHint')}</span>
+                            </label>
+                            <input id="file-upload" type="file" className="hidden" accept="image/png, image/jpeg" onChange={handleFileUpload} />
+                        </div>
                     </div>
                 );
             case 'modify':
                 return (
-                     <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">Modifica AI Non Distruttiva</h3>
-                        <p className="text-sm text-gray-400 mb-4">Modifica realisticamente il mockup di base senza perdere i tuoi livelli di design. L'IA modificherà l'indumento e poi i tuoi livelli verranno riapplicati automaticamente.</p>
-                        
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Tipo di Modifica</label>
-                                {/* FIX: Added value attributes to match ModificationRequest['type'] and resolve type errors. */}
-                                <select value={modificationRequest.type} onChange={e => setModificationRequest(prev => ({...prev, type: e.target.value as ModificationRequest['type']}))} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3">
-                                    <option value="Structural">Strutturale</option>
-                                    <option value="Text">Testo</option>
-                                    <option value="Graphic">Grafica</option>
-                                </select>
-                            </div>
-                             <div className="relative">
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Contenuto / Descrizione</label>
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-semibold text-white">{t('editorPanel.modifyTab.title')}</h3>
+                        <p className="text-xs text-gray-400 -mt-2">{t('editorPanel.modifyTab.description')}</p>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.modifyTab.typeLabel')}</label>
+                            <select
+                                value={modificationRequest.type}
+                                onChange={(e) => setModificationRequest(prev => ({ ...prev, type: e.target.value as ModificationRequest['type'] }))}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3"
+                            >
+                                {modificationTypes.map(type => <option key={type} value={type}>{t(`modificationType.${type.toLowerCase()}`, type)}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.modifyTab.contentLabel')}</label>
+                            <div className="relative">
                                 <textarea
                                     value={modificationRequest.content}
-                                    onChange={e => setModificationRequest(prev => ({...prev, content: e.target.value}))}
-                                    placeholder={
-                                        modificationRequest.type === 'Structural' ? "es. 'aggiungi una cerniera' o 'rendi il colletto blu'" :
-                                        modificationRequest.type === 'Text' ? "es. 'CALIFORNIA 1982'" :
-                                        "es. 'un piccolo logo di un'aquila'"
-                                    }
-                                    className="w-full flex-grow h-20 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-2 focus:ring-orange-500 text-white resize-none"
-                                    disabled={isLoading}
+                                    onChange={(e) => setModificationRequest(prev => ({ ...prev, content: e.target.value }))}
+                                    placeholder={modificationRequest.type === 'Structural' ? "e.g., add a zipper to the front" : "e.g., the text 'APEX'"}
+                                    rows={3}
+                                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 pr-10"
                                 />
-                                <button 
-                                  onClick={handleVoiceInput} 
-                                  className={`absolute top-8 right-2 p-2 rounded-full transition-colors ${isRecording ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600 hover:bg-gray-500'}`} 
-                                  title={isRecording ? "Ferma Registrazione" : "Registra Prompt Vocale"}
+                                <button
+                                    onClick={handleVoiceInput}
+                                    className={`absolute top-2 right-2 p-2 rounded-full transition-colors ${isRecording ? 'bg-red-600 text-white animate-pulse' : 'bg-gray-600/50 hover:bg-gray-500/50'}`}
+                                    title={isRecording ? t('controlPanel.mic.stop') : "Record Modification"}
                                 >
-                                  {isRecording ? <StopIcon/> : <MicIcon />}
+                                    {isRecording ? <StopIcon /> : <MicIcon />}
                                 </button>
                             </div>
-                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Stile</label>
-                                 <input
-                                    type="text"
-                                    value={modificationRequest.style}
-                                    onChange={e => setModificationRequest(prev => ({...prev, style: e.target.value}))}
-                                    placeholder="es. font varsity vintage screpolato, bianco sporco"
-                                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3"
-                                />
-                            </div>
-                             {modificationRequest.type !== 'Structural' && <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Posizione</label>
-                                <select
-                                    value={modificationRequest.location}
-                                    onChange={e => setModificationRequest(prev => ({...prev, location: e.target.value}))}
-                                    className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3"
-                                    disabled={isLoading || placementOptions.length === 0}
-                                >
-                                    {placementOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                </select>
-                            </div>}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.modifyTab.styleLabel')}</label>
+                            <input
+                                type="text"
+                                value={modificationRequest.style}
+                                onChange={(e) => setModificationRequest(prev => ({ ...prev, style: e.target.value }))}
+                                placeholder={t('editorPanel.modifyTab.stylePlaceholder')}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.modifyTab.locationLabel')}</label>
+                            <select
+                                value={modificationRequest.location}
+                                onChange={(e) => setModificationRequest(prev => ({ ...prev, location: e.target.value }))}
+                                className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3"
+                                disabled={placementOptions.length === 0}
+                            >
+                                {placementOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            </select>
                         </div>
                         <button
                             onClick={() => onAiEdit(modificationRequest)}
-                            disabled={isLoading || !modificationRequest.content}
-                            className="w-full mt-6 bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                            disabled={isLoading || !modificationRequest.content || !modificationRequest.location}
+                            className="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                         >
-                            {isLoading ? <LoadingSpinner /> : 'Applica Modifica AI'}
+                            {isLoading ? <LoadingSpinner /> : t('editorPanel.modifyTab.applyButton')}
                         </button>
 
+                        <div className="border-t border-gray-700 pt-4 mt-4">
+                            <h4 className="text-sm font-semibold text-gray-300 mb-2">{t('editorPanel.modifyTab.quickEditsTitle')}</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button 
+                                    onClick={() => onAiEdit({ type: 'Structural', content: 'a subtle, contrasting white trim', location: 'collar', style: '' })}
+                                    disabled={isLoading}
+                                    className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md text-xs disabled:opacity-50"
+                                >
+                                    {t('editorPanel.modifyTab.addCollarTrim')}
+                                </button>
+                                <button 
+                                    onClick={() => onAiEdit({ type: 'Structural', content: 'realistic stitching details along all visible seams (shoulders, sleeves, hem)', location: 'seams', style: 'matching the garment fabric color' })}
+                                    disabled={isLoading}
+                                    className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md text-xs disabled:opacity-50"
+                                >
+                                    {t('editorPanel.modifyTab.addStitching')}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 );
             case 'sketch':
                 return (
                     <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h3 className="text-lg font-semibold text-white">Strumenti Schizzo</h3>
-                        </div>
-                        
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">Tipo Pennello</label>
-                            <div className="grid grid-cols-3 gap-2">
-                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'pencil'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'pencil' ? 'bg-orange-600' : 'bg-gray-700'}`}><PencilIcon /> Matita</button>
-                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'pen'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'pen' ? 'bg-orange-600' : 'bg-gray-700'}`}><PenIcon /> Penna</button>
-                                <button onClick={() => setSketchTools(s => ({...s, brushType: 'eraser'}))} className={`p-2 rounded-md flex items-center justify-center gap-2 ${sketchTools.brushType === 'eraser' ? 'bg-orange-600' : 'bg-gray-700'}`}><EraserIcon /> Gomma</button>
+                        <h3 className="text-lg font-semibold text-white">{t('editorPanel.sketchTab.title')}</h3>
+                        {activeLayer?.type !== 'drawing' ? (
+                             <div className="text-center text-gray-400 p-4 bg-gray-900/50 rounded-lg">
+                                 <p>Select a sketch layer to use these tools, or add one from the 'Add' tab.</p>
+                             </div>
+                        ) : (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">{t('editorPanel.sketchTab.brushTypeLabel')}</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button onClick={() => setSketchTools(s => ({...s, brushType: 'pencil'}))} className={`p-2 rounded-md ${sketchTools.brushType === 'pencil' ? 'bg-orange-600' : 'bg-gray-700'}`}><PencilIcon className="mx-auto" /></button>
+                                    <button onClick={() => setSketchTools(s => ({...s, brushType: 'pen'}))} className={`p-2 rounded-md ${sketchTools.brushType === 'pen' ? 'bg-orange-600' : 'bg-gray-700'}`}><PenIcon className="mx-auto" /></button>
+                                    <button onClick={() => setSketchTools(s => ({...s, brushType: 'eraser'}))} className={`p-2 rounded-md ${sketchTools.brushType === 'eraser' ? 'bg-orange-600' : 'bg-gray-700'}`}><EraserIcon className="mx-auto" /></button>
+                                </div>
                             </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Colore Pennello</label>
-                            <input type="color" value={sketchTools.brushColor} onChange={e => setSketchTools(s => ({...s, brushColor: e.target.value}))} className="w-full p-1 h-10 bg-gray-700 rounded-md"/>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Dimensione Pennello ({sketchTools.brushSize}px)</label>
-                            <input type="range" min="1" max="100" value={sketchTools.brushSize} onChange={e => setSketchTools(s => ({...s, brushSize: Number(e.target.value)}))} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"/>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Opacità Pennello ({Math.round(sketchTools.brushOpacity * 100)}%)</label>
-                            <input type="range" min="0" max="1" step="0.01" value={sketchTools.brushOpacity} onChange={e => setSketchTools(s => ({...s, brushOpacity: Number(e.target.value)}))} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"/>
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-2">Simmetria</label>
-                            <div className="grid grid-cols-3 gap-2">
-                                <button onClick={() => setSketchTools(s => ({...s, symmetry: 'none'}))} className={`p-2 rounded-md ${sketchTools.symmetry === 'none' ? 'bg-orange-600' : 'bg-gray-700'}`}>Off</button>
-                                <button onClick={() => setSketchTools(s => ({...s, symmetry: 'vertical'}))} className={`p-2 rounded-md flex justify-center ${sketchTools.symmetry === 'vertical' ? 'bg-orange-600' : 'bg-gray-700'}`}><SymmetryYIcon /></button>
-                                <button onClick={() => setSketchTools(s => ({...s, symmetry: 'horizontal'}))} className={`p-2 rounded-md flex justify-center ${sketchTools.symmetry === 'horizontal' ? 'bg-orange-600' : 'bg-gray-700'}`}><SymmetryXIcon /></button>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.sketchTab.brushColorLabel')}</label>
+                                <input type="color" value={sketchTools.brushColor} onChange={e => setSketchTools(s => ({...s, brushColor: e.target.value}))} className="w-full h-10 p-1 bg-gray-700 border-gray-600 rounded-md" />
                             </div>
-                        </div>
-
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.sketchTab.brushSizeLabel')} ({sketchTools.brushSize}px)</label>
+                                <input type="range" min="1" max="100" value={sketchTools.brushSize} onChange={e => setSketchTools(s => ({...s, brushSize: parseInt(e.target.value)}))} className="w-full" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.sketchTab.brushOpacityLabel')} ({Math.round(sketchTools.brushOpacity * 100)}%)</label>
+                                <input type="range" min="0.01" max="1" step="0.01" value={sketchTools.brushOpacity} onChange={e => setSketchTools(s => ({...s, brushOpacity: parseFloat(e.target.value)}))} className="w-full" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-2">{t('editorPanel.sketchTab.symmetryLabel')}</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <button onClick={() => setSketchTools(s => ({...s, symmetry: 'none'}))} className={`p-2 rounded-md ${sketchTools.symmetry === 'none' ? 'bg-orange-600' : 'bg-gray-700'}`}>{t('editorPanel.sketchTab.symmetryOff')}</button>
+                                    <button onClick={() => setSketchTools(s => ({...s, symmetry: 'vertical'}))} className={`p-2 rounded-md ${sketchTools.symmetry === 'vertical' ? 'bg-orange-600' : 'bg-gray-700'}`}><SymmetryYIcon className="mx-auto" /></button>
+                                    <button onClick={() => setSketchTools(s => ({...s, symmetry: 'horizontal'}))} className={`p-2 rounded-md ${sketchTools.symmetry === 'horizontal' ? 'bg-orange-600' : 'bg-gray-700'}`}><SymmetryXIcon className="mx-auto" /></button>
+                                </div>
+                            </div>
+                        </>
+                        )}
                     </div>
                 );
             case 'layers':
             default:
                 return (
-                    <div>
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-semibold text-white">Livelli</h3>
-                        <div className="flex items-center gap-2">
-                          <button onClick={onUndo} disabled={!canUndo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Annulla"><UndoIcon /></button>
-                          <button onClick={onRedo} disabled={!canRedo} className="p-2 rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed" title="Ripristina"><RedoIcon /></button>
-                        </div>
-                      </div>
-                        {layers.length > 0 ? (
-                          <div className="space-y-2 mb-4">
-                              {[...layers].reverse().map((layer, index) => {
-                                  const originalIndex = layers.length - 1 - index;
-                                  return (
-                                  <div 
-                                      key={layer.id}
-                                      draggable
-                                      onDragStart={() => dragItem.current = originalIndex}
-                                      onDragEnter={() => dragOverItem.current = originalIndex}
-                                      onDragEnd={handleDragEnd}
-                                      onDragOver={(e) => e.preventDefault()}
-                                      onClick={() => onSetActiveLayer(layer.id)} 
-                                      className={`flex items-center p-2 rounded-md cursor-pointer transition-all ${activeLayerId === layer.id ? 'bg-orange-500/30 ring-2 ring-orange-500' : 'bg-gray-700'}`}
-                                      style={{ border: dragOverItem.current === originalIndex ? '2px dashed #f97316' : 'none' }}
-                                  >
-                                      <div className="flex-grow truncate pr-2 flex items-center">
-                                          <span className="cursor-grab pr-2 text-gray-500">⠿</span>
-                                          {layer.type === 'image' && <img src={layer.content} className="w-8 h-8 object-contain inline mr-2 bg-white/10 rounded"/>}
-                                          {layer.type === 'text' && <span className="text-xl font-bold mr-2 w-8 text-center">T</span>}
-                                          {layer.type === 'shape' && (
-                                              <div className="w-8 h-8 mr-2 flex items-center justify-center">
-                                                  <div style={{ backgroundColor: layer.fill }} className={`w-5 h-5 ${layer.content === 'circle' ? 'rounded-full' : ''}`}></div>
-                                              </div>
-                                          )}
-                                          {layer.type === 'drawing' && <PencilIcon className="w-8 h-8 p-1 mr-2"/>}
-                                          <span className="truncate text-sm">
-                                            {layer.type === 'drawing' ? `Livello Schizzo` : 
-                                             layer.type === 'text' ? layer.content :
-                                             layer.type === 'shape' ? `${layer.content.charAt(0).toUpperCase() + layer.content.slice(1)} Forma` :
-                                             `Livello Immagine`
-                                             }
-                                          </span>
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <button onClick={(e) => { e.stopPropagation(); onUpdateLayer(layer.id, {visible: !layer.visible}, true)}}>{layer.visible ? '👁️' : '🙈'}</button>
-                                        <button onClick={(e) => { e.stopPropagation(); onDeleteLayer(layer.id)}}>🗑️</button>
-                                      </div>
-                                  </div>
-                              )})}
-                          </div>
-                        ) : (
-                           <p className="text-gray-500 text-sm text-center py-4">Il tuo design è vuoto. Usa la scheda 'Aggiungi' per aggiungere contenuti.</p>
-                        )}
-                        
-                        <div className="border-t border-gray-700 mt-4 pt-4">
-                             <button
-                                onClick={onRenderRealistic}
-                                disabled={isLoading || layers.length === 0}
-                                className="w-full bg-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                                {isLoading ? <LoadingSpinner /> : 'Renderizza Mockup Realistico'}
-                            </button>
-                            {layers.length === 0 && <p className="text-xs text-gray-500 text-center mt-2">Aggiungi livelli per abilitare il rendering.</p>}
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-lg font-semibold text-white">{t('editorPanel.layersTab.title')}</h3>
+                            <div className="flex gap-2">
+                                <button onClick={onUndo} disabled={!canUndo} title={t('editorPanel.layersTab.undo')} className="p-2 bg-gray-700 rounded-md disabled:opacity-50 hover:bg-gray-600"><UndoIcon /></button>
+                                <button onClick={onRedo} disabled={!canRedo} title={t('editorPanel.layersTab.redo')} className="p-2 bg-gray-700 rounded-md disabled:opacity-50 hover:bg-gray-600"><RedoIcon /></button>
+                            </div>
                         </div>
 
-                        {activeLayer && (
-                            <div className="border-t border-gray-700 mt-4 pt-4 space-y-4">
-                                <h4 className="text-md font-semibold mb-2 text-white">Proprietà Livello</h4>
-                                {activeLayer.type === 'image' && (
-                                     <div className="space-y-2">
-                                        <h5 className="text-sm font-medium text-gray-300">Filtri Grafici AI</h5>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <button onClick={() => handleApplyFilter('vintage')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Vintage '90s</button>
-                                            <button onClick={() => handleApplyFilter('glitch')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Glitch/Cyber</button>
-                                            <button onClick={() => handleApplyFilter('distress')} disabled={isLoading} className="text-xs text-center bg-gray-700 hover:bg-gray-600 p-2 rounded-lg disabled:opacity-50">Invecchiato</button>
+                        <div className="bg-gray-900/50 rounded-lg p-2 space-y-2 min-h-[150px]">
+                            {layers.length === 0 ? (
+                                <div className="text-center text-sm text-gray-400 py-10">{t('editorPanel.layersTab.empty')}</div>
+                            ) : (
+                                layers.slice().reverse().map((layer, index) => {
+                                    const originalIndex = layers.length - 1 - index;
+                                    const layerName = layer.type === 'shape' ? t('editorPanel.layerName.shape', 'Forma {shape}').replace('{shape}', t(`editorPanel.layerName.${layer.content}`, layer.content))
+                                        : layer.type === 'text' ? t('editorPanel.layerName.text', '{content}').replace('{content}', layer.content.substring(0, 15) + (layer.content.length > 15 ? '...' : ''))
+                                        : layer.type === 'drawing' ? t('editorPanel.layerName.sketch')
+                                        : t('editorPanel.layerName.image');
+                                    
+                                    return (
+                                        <div
+                                            key={layer.id}
+                                            draggable
+                                            onDragStart={() => dragItem.current = originalIndex}
+                                            onDragEnter={() => dragOverItem.current = originalIndex}
+                                            onDragEnd={handleDragEnd}
+                                            onDragOver={(e) => e.preventDefault()}
+                                            onClick={() => onSetActiveLayer(layer.id)}
+                                            className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${activeLayerId === layer.id ? 'bg-orange-600/30' : 'bg-gray-700 hover:bg-gray-600/70'}`}
+                                        >
+                                            <button onClick={() => onUpdateLayer(layer.id, { visible: !layer.visible }, true)}>
+                                                {layer.visible ? '👁️' : '🙈'}
+                                            </button>
+                                            <span className="flex-grow truncate text-sm">{layerName}</span>
+                                            <button onClick={() => onDeleteLayer(layer.id)} className="text-red-500 hover:text-red-400">🗑️</button>
                                         </div>
-                                    </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        <button
+                            onClick={onRenderRealistic}
+                            disabled={isLoading || layers.length === 0 || !layers.some(l => l.visible)}
+                            className="w-full bg-orange-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                        >
+                            {isLoading ? <LoadingSpinner /> : t('editorPanel.layersTab.renderButton')}
+                        </button>
+                        {!layers.some(l => l.visible) && layers.length > 0 && <p className="text-xs text-center text-gray-500">{t('editorPanel.layersTab.renderButtonDisabled')}</p>}
+
+                        {activeLayer && (
+                            <div className="space-y-4 border-t border-gray-700 pt-4">
+                                <h4 className="font-semibold text-white">{t('editorPanel.layersTab.propertiesTitle')}</h4>
+                                {activeLayer.type === 'image' && (
+                                     <div>
+                                        <h5 className="text-sm font-medium text-gray-300 mb-2">{t('editorPanel.layersTab.filtersTitle')}</h5>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <button onClick={() => handleApplyFilter('vintage')} disabled={isLoading} className="text-xs bg-gray-700 p-2 rounded hover:bg-gray-600 disabled:opacity-50">{t('editorPanel.layersTab.filterVintage')}</button>
+                                            <button onClick={() => handleApplyFilter('glitch')} disabled={isLoading} className="text-xs bg-gray-700 p-2 rounded hover:bg-gray-600 disabled:opacity-50">{t('editorPanel.layersTab.filterGlitch')}</button>
+                                            <button onClick={() => handleApplyFilter('distress')} disabled={isLoading} className="text-xs bg-gray-700 p-2 rounded hover:bg-gray-600 disabled:opacity-50">{t('editorPanel.layersTab.filterDistress')}</button>
+                                        </div>
+                                     </div>
                                 )}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Opacità ({Math.round(activeLayer.opacity * 100)}%)</label>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="1"
-                                        step="0.01"
-                                        value={activeLayer.opacity}
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.layersTab.opacityLabel')}</label>
+                                    <input type="range" min="0" max="1" step="0.01" value={activeLayer.opacity}
                                         onChange={(e) => onUpdateLayer(activeLayer.id, { opacity: parseFloat(e.target.value) }, false)}
-                                        onMouseUp={(e) => onUpdateLayer(activeLayer.id, { opacity: parseFloat(e.target.value) }, true)}
-                                        className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                                        onMouseUp={() => onUpdateLayer(activeLayer.id, {}, true)}
+                                        className="w-full"
                                     />
                                 </div>
                                 {activeLayer.type === 'text' && (
-                                     <>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-300 mb-1">Carattere</label>
-                                                <select value={activeLayer.fontFamily} onChange={e => onUpdateLayer(activeLayerId!, { fontFamily: e.target.value }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 text-sm">
-                                                    {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-300 mb-1">Spessore Carattere</label>
-                                                <select value={activeLayer.fontWeight} onChange={e => onUpdateLayer(activeLayerId!, { fontWeight: e.target.value as any }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2">
-                                                    <option value="normal">Normale</option>
-                                                    <option value="bold">Grassetto</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                         <div>
-                                            <label className="block text-sm font-medium text-gray-300 mb-1">Colore Testo</label>
-                                            <input type="color" value={activeLayer.color} onChange={e => onUpdateLayer(activeLayerId!, { color: e.target.value }, true)} className="w-full p-1 h-10 bg-gray-700 border border-gray-600 rounded-md"/>
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.layersTab.fontLabel')}</label>
+                                            <select value={activeLayer.fontFamily} onChange={(e) => onUpdateLayer(activeLayer.id, { fontFamily: e.target.value }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-1 px-2">
+                                                {FONT_OPTIONS.map(font => <option key={font} value={font}>{font}</option>)}
+                                            </select>
                                         </div>
                                         <div>
-                                             <label className="block text-sm font-medium text-gray-300 mb-1">Allineamento</label>
-                                              <div className="grid grid-cols-3 gap-2">
-                                                <button onClick={() => onUpdateLayer(activeLayerId!, { textAlign: 'left' }, true)} className={`p-2 rounded-md flex justify-center ${activeLayer.textAlign === 'left' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignLeft /></button>
-                                                <button onClick={() => onUpdateLayer(activeLayerId!, { textAlign: 'center' }, true)} className={`p-2 rounded-md flex justify-center ${activeLayer.textAlign === 'center' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignCenter /></button>
-                                                <button onClick={() => onUpdateLayer(activeLayerId!, { textAlign: 'right' }, true)} className={`p-2 rounded-md flex justify-center ${activeLayer.textAlign === 'right' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignRight /></button>
-                                              </div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.layersTab.fontWeightLabel')}</label>
+                                            <select value={activeLayer.fontWeight} onChange={(e) => onUpdateLayer(activeLayer.id, { fontWeight: e.target.value as 'normal' | 'bold' }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-1 px-2">
+                                                <option value="normal">{t('editorPanel.layersTab.fontWeightNormal')}</option>
+                                                <option value="bold">{t('editorPanel.layersTab.fontWeightBold')}</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.layersTab.alignmentLabel')}</label>
+                                             <div className="grid grid-cols-3 gap-2">
+                                                <button onClick={() => onUpdateLayer(activeLayer.id, { textAlign: 'left' }, true)} className={`p-2 rounded-md ${activeLayer.textAlign === 'left' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignLeft className="mx-auto" /></button>
+                                                <button onClick={() => onUpdateLayer(activeLayer.id, { textAlign: 'center' }, true)} className={`p-2 rounded-md ${activeLayer.textAlign === 'center' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignCenter className="mx-auto" /></button>
+                                                <button onClick={() => onUpdateLayer(activeLayer.id, { textAlign: 'right' }, true)} className={`p-2 rounded-md ${activeLayer.textAlign === 'right' ? 'bg-orange-600' : 'bg-gray-700'}`}><AlignRight className="mx-auto" /></button>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.layersTab.colorLabel')}</label>
+                                            <input type="color" value={activeLayer.color} onChange={(e) => onUpdateLayer(activeLayer.id, { color: e.target.value }, true)} className="w-full h-8 p-1 bg-gray-700 border-gray-600 rounded-md" />
                                         </div>
                                     </>
                                 )}
-                                {activeLayer.type === 'shape' && (
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-300 mb-1">Colore Riempimento</label>
-                                        <input 
-                                            type="color" 
-                                            value={activeLayer.fill} 
-                                            onChange={e => onUpdateLayer(activeLayerId!, { fill: e.target.value }, true)} 
-                                            className="w-full p-1 h-10 bg-gray-700 border border-gray-600 rounded-md"
-                                        />
+                                 {activeLayer.type === 'shape' && (
+                                     <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.layersTab.fillColorLabel')}</label>
+                                        <input type="color" value={activeLayer.fill} onChange={(e) => onUpdateLayer(activeLayer.id, { fill: e.target.value }, true)} className="w-full h-8 p-1 bg-gray-700 border-gray-600 rounded-md" />
                                     </div>
-                                )}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Metodo di Fusione</label>
-                                    <select 
-                                        value={activeLayer.blendMode} 
-                                        onChange={(e) => onUpdateLayer(activeLayer.id, { blendMode: e.target.value }, true)} 
-                                        className="w-full bg-gray-700 border border-gray-600 rounded-md p-2"
-                                    >
-                                        {BLEND_MODES.map(mode => <option key={mode.value} value={mode.value}>{mode.name}</option>)}
+                                 )}
+                                 <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">{t('editorPanel.layersTab.blendModeLabel')}</label>
+                                    <select value={activeLayer.blendMode} onChange={(e) => onUpdateLayer(activeLayer.id, { blendMode: e.target.value }, true)} className="w-full bg-gray-700 border border-gray-600 rounded-md py-1 px-2">
+                                        {BLEND_MODES.map(mode => <option key={mode} value={mode}>{mode}</option>)}
                                     </select>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-gray-300">Blocca Trasparenza</span>
-                                    <button
-                                      type="button"
-                                      className={`${ activeLayer.lockTransparency ? 'bg-orange-600' : 'bg-gray-600' } relative inline-flex items-center h-6 rounded-full w-11 transition-colors focus:outline-none`}
-                                      onClick={() => onUpdateLayer(activeLayer.id, { lockTransparency: !activeLayer.lockTransparency }, true)}
-                                    >
-                                      <span className={`${ activeLayer.lockTransparency ? 'translate-x-6' : 'translate-x-1' } inline-block w-4 h-4 transform bg-white rounded-full transition-transform`}/>
-                                    </button>
-                                </div>
+                                {activeLayer.type === 'drawing' && (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-medium text-gray-300">{t('editorPanel.layersTab.lockTransparencyLabel')}</span>
+                                        <button
+                                            type="button"
+                                            className={`${activeLayer.lockTransparency ? 'bg-orange-600' : 'bg-gray-600'} relative inline-flex items-center h-6 rounded-full w-11`}
+                                            onClick={() => onUpdateLayer(activeLayer.id, { lockTransparency: !activeLayer.lockTransparency }, true)}
+                                        >
+                                            <span className={`${activeLayer.lockTransparency ? 'translate-x-6' : 'translate-x-1'} inline-block w-4 h-4 transform bg-white rounded-full transition-transform`} />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
                 );
         }
-    }
+    };
 
-    const TabButton: React.FC<{tab: EditorTab, icon: React.ReactNode, title: string, isVisible?: boolean}> = ({tab, icon, title, isVisible = true}) => {
-        if (!isVisible) return null;
-        return (
-            <button 
-                onClick={() => setActiveTab(tab)} 
-                className={`px-3 py-2 rounded-lg flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === tab ? 'bg-orange-600 text-white' : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
-                title={title}
-            >
-                {icon}
-                <span className="text-xs font-medium">{title}</span>
-            </button>
-        )
-    }
+    const tabs: {id: EditorTab, icon: React.ReactNode, name: string}[] = [
+        { id: 'layers', icon: <LayersIcon />, name: t('editorPanel.tabs.layers') },
+        { id: 'add', icon: <AddIcon />, name: t('editorPanel.tabs.add') },
+        { id: 'modify', icon: <MagicWandIcon />, name: t('editorPanel.tabs.modify') },
+        { id: 'sketch', icon: <PencilIcon />, name: t('editorPanel.tabs.sketch') },
+    ];
 
     return (
-        <div className="p-4">
-            <div className="flex-shrink-0 flex items-center gap-1 p-1 bg-gray-900 rounded-lg">
-                <TabButton tab="layers" icon={<LayersIcon />} title="Livelli" />
-                <TabButton tab="add" icon={<AddIcon />} title="Aggiungi" />
-                <TabButton tab="modify" icon={<MagicWandIcon />} title="Modifica AI" />
-                <TabButton tab="sketch" icon={<PencilIcon />} title="Schizzo" isVisible={activeLayer?.type === 'drawing'} />
+        <div className="flex flex-col h-full">
+            <div className="flex-shrink-0 grid grid-cols-4 gap-1 bg-gray-900/50 p-1 rounded-t-lg">
+                {tabs.map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex flex-col items-center justify-center gap-1 p-2 rounded-md text-xs transition-colors ${activeTab === tab.id ? 'bg-orange-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}
+                    >
+                        {tab.icon}
+                        <span>{tab.name}</span>
+                    </button>
+                ))}
             </div>
-            
-            <div className="mt-4">
+            <div className="flex-grow p-4 overflow-y-auto">
                 {renderActiveTab()}
             </div>
         </div>

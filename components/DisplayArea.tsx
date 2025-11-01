@@ -2,12 +2,12 @@
 
 import React, { useRef, useLayoutEffect, useEffect, useState, useCallback } from 'react';
 import { DraggableGraphic } from './DraggableGraphic';
-// FIX: DesignLayer is now exported from constants.ts. This import has been updated to reflect the new location.
 import { SketchToolsConfig } from './EditorPanel';
 import type { GeneratedImage, DesignLayer } from '../constants';
 import { GroundingSource } from '../services/geminiService';
 import { View3D, View2D } from './Icons';
 import { Mockup3DViewer } from './Mockup3DViewer';
+import { useTranslation } from '../hooks/useTranslation';
 
 
 interface DisplayAreaProps {
@@ -23,26 +23,32 @@ interface DisplayAreaProps {
   selectedGarment: string;
 }
 
-const Placeholder: React.FC = () => (
-  <div className="text-center text-gray-400">
-    <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-24 w-24 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-    </svg>
-    <h3 className="mt-4 text-xl font-medium text-gray-300">Il Tuo Mockup Apparirà Qui</h3>
-    <p className="mt-1 text-sm text-gray-500">Configura le opzioni e clicca su "Genera Mockup".</p>
-  </div>
-);
+const Placeholder: React.FC = () => {
+    const { t } = useTranslation();
+    return (
+        <div className="text-center text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-24 w-24 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <h3 className="mt-4 text-xl font-medium text-gray-300">{t('displayArea.placeholder.title')}</h3>
+            <p className="mt-1 text-sm text-gray-500">{t('displayArea.placeholder.description')}</p>
+        </div>
+    );
+};
 
-const LoadingIndicator: React.FC = () => (
-    <div className="text-center text-gray-400 flex flex-col items-center justify-center h-full">
-        <svg className="animate-spin h-12 w-12 text-orange-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <h3 className="mt-4 text-xl font-medium text-gray-300">Generazione Mockup in corso...</h3>
-        <p className="mt-1 text-sm text-gray-500">L'IA sta compiendo la sua magia. Attendi un momento.</p>
-    </div>
-);
+const LoadingIndicator: React.FC = () => {
+    const { t } = useTranslation();
+    return (
+        <div className="text-center text-gray-400 flex flex-col items-center justify-center h-full">
+            <svg className="animate-spin h-12 w-12 text-orange-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <h3 className="mt-4 text-xl font-medium text-gray-300">{t('displayArea.loading.title')}</h3>
+            <p className="mt-1 text-sm text-gray-500">{t('displayArea.loading.description')}</p>
+        </div>
+    );
+};
 
 const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -69,6 +75,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
   const lastPoint = useRef<{ x: number; y: number } | null>(null);
   const [imageError, setImageError] = useState(false);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  const { t } = useTranslation();
 
   const activeLayer = layers.find(l => l.id === activeLayerId);
   const isSketchMode = activeLayer?.type === 'drawing';
@@ -80,7 +87,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
   }, [primaryImage]);
 
 
-  // Sync drawing canvas with active layer content
+  // Sincronizza il canvas di disegno con il contenuto del livello attivo
   useLayoutEffect(() => {
     const canvas = drawingCanvasRef.current;
     if (!canvas) return;
@@ -88,7 +95,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Set canvas dimensions from the container
+    // Imposta le dimensioni del canvas dal contenitore
     const container = containerRef.current;
     if (container) {
         const { clientWidth, clientHeight } = container;
@@ -114,7 +121,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
         };
         img.src = activeLayer.content;
     }
-  }, [activeLayerId, activeLayer?.content, isSketchMode, layers]); // Rerun when active layer changes
+  }, [activeLayerId, activeLayer?.content, isSketchMode, layers]); // Esegui di nuovo quando il livello attivo cambia
 
 
   const getBrushStyle = (opacity: number) => {
@@ -124,7 +131,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
         case 'pen':
             return sketchTools.brushColor;
         case 'eraser':
-             return `rgba(0,0,0,1)`; // Eraser uses destination-out
+             return `rgba(0,0,0,1)`; // La gomma usa destination-out
         default:
             return sketchTools.brushColor;
     }
@@ -218,7 +225,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
   
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
-      // Deselect if clicking on the container itself or the base image
+      // Deseleziona se si fa clic sul contenitore stesso o sull'immagine di base
       if (target === containerRef.current || target.dataset.isBaseImage || target.id === "drawing-canvas") {
           onSetActiveLayer(null);
       }
@@ -249,7 +256,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                             <div key={index} className="relative aspect-square">
                                 <img 
                                     src={image.url} 
-                                    alt={`Mockup generato - vista ${image.view}`}
+                                    alt={t('displayArea.generatedMockupViewAlt', 'Generated mockup - {view} view').replace('{view}', image.view)}
                                     onError={() => setImageError(true)}
                                     className="w-full h-full object-contain rounded-md"
                                 />
@@ -263,7 +270,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                     <div className="relative w-full h-full flex items-center justify-center">
                         <img 
                             src={primaryImage} 
-                            alt="Mockup di abbigliamento generato" 
+                            alt={t('displayArea.generatedMockupAlt')}
                             className="max-w-full max-h-full object-contain rounded-md select-none"
                             onError={() => setImageError(true)}
                             data-is-base-image="true"
@@ -303,7 +310,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
               <div className="absolute bottom-4 right-4 bg-gray-900/80 backdrop-blur-sm p-3 rounded-lg max-w-xs text-xs border border-gray-700 z-20">
                 <h4 className="font-bold text-gray-200 mb-2 flex items-center gap-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
-                  Migliorato con Ricerca Google
+                  {t('displayArea.groundingTitle')}
                 </h4>
                 <ul className="space-y-1 max-h-24 overflow-y-auto pr-2">
                   {groundingSources.map((source, index) => (
@@ -324,7 +331,7 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
           <button
               onClick={() => setViewMode(v => v === '2d' ? '3d' : '2d')}
               className="bg-gray-800 text-white font-bold py-3 px-5 rounded-full shadow-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-orange-500 transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"
-              aria-label={viewMode === '2d' ? "Passa a Vista 3D" : "Passa a Vista 2D"}
+              aria-label={viewMode === '2d' ? t('displayArea.switchTo3D') : t('displayArea.switchTo2D')}
           >
               {viewMode === '2d' ? <View3D className="h-5 w-5" /> : <View2D className="h-5 w-5" />}
               <span>{viewMode === '2d' ? '3D' : '2D'}</span>
@@ -332,10 +339,10 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
           <button
             onClick={handleDownload}
             className="bg-orange-600 text-white font-bold py-3 px-5 rounded-full shadow-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-orange-500 transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"
-            aria-label="Scarica Mockup"
+            aria-label={t('displayArea.downloadButton')}
           >
             <DownloadIcon className="h-5 w-5" />
-            <span>Scarica</span>
+            <span>{t('displayArea.downloadButton')}</span>
           </button>
         </div>
       )}

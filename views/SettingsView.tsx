@@ -2,6 +2,7 @@
 
 import React, { useContext } from 'react';
 import { SettingsContext } from '../contexts/SettingsContext';
+import { useTranslation } from '../hooks/useTranslation';
 
 interface SettingsViewProps {
   setView: (view: 'mockup' | 'profile' | 'settings') => void;
@@ -9,8 +10,7 @@ interface SettingsViewProps {
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ setView }) => {
   const { theme, setTheme, language, setLanguage, clearCache } = useContext(SettingsContext);
-  
-  const t = (en: string, it: string) => (language === 'it' ? it : en);
+  const { t } = useTranslation();
 
   const SettingSection: React.FC<{ title: string, description: string, children: React.ReactNode }> = ({ title, description, children }) => (
       <div className="py-6 border-b border-gray-200 dark:border-gray-700">
@@ -23,37 +23,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ setView }) => {
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
        <button onClick={() => setView('mockup')} className="mb-6 text-sm text-orange-500 hover:underline">
-        &larr; {t('Back to Mockup Generator', 'Torna al Generatore di Mockup')}
+        &larr; {t('settings.backToGenerator')}
       </button>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
-        <h2 className="text-3xl font-bold mb-6">{t('Settings', 'Impostazioni')}</h2>
+        <h2 className="text-3xl font-bold mb-6">{t('settings.title')}</h2>
         
         {/* Theme Settings */}
         <SettingSection 
-            title={t('Appearance', 'Aspetto')}
-            description={t('Customize the look and feel of the app.', 'Personalizza l\'aspetto dell\'app.')}
+            title={t('settings.appearance.title')}
+            description={t('settings.appearance.description')}
         >
             <div className="flex items-center space-x-4">
                 <label className="flex items-center">
                     <input type="radio" name="theme" value="light" checked={theme === 'light'} onChange={() => setTheme('light')} className="form-radio text-orange-500"/>
-                    <span className="ml-2">{t('Light', 'Chiaro')}</span>
+                    <span className="ml-2">{t('settings.theme.light')}</span>
                 </label>
                 <label className="flex items-center">
                     <input type="radio" name="theme" value="dark" checked={theme === 'dark'} onChange={() => setTheme('dark')} className="form-radio text-orange-500"/>
-                    <span className="ml-2">{t('Dark', 'Scuro')}</span>
+                    <span className="ml-2">{t('settings.theme.dark')}</span>
                 </label>
                 <label className="flex items-center">
                     <input type="radio" name="theme" value="system" checked={theme === 'system'} onChange={() => setTheme('system')} className="form-radio text-orange-500"/>
-                    <span className="ml-2">{t('System', 'Sistema')}</span>
+                    <span className="ml-2">{t('settings.theme.system')}</span>
                 </label>
             </div>
         </SettingSection>
 
         {/* Language Settings */}
         <SettingSection 
-            title={t('Language', 'Lingua')}
-            description={t('Change the interface language.', 'Cambia la lingua dell\'interfaccia.')}
+            title={t('settings.language.title')}
+            description={t('settings.language.description')}
         >
              <select 
                 value={language} 
@@ -67,26 +67,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ setView }) => {
 
         {/* Support & Info */}
         <SettingSection 
-            title={t('Support & Info', 'Supporto e Informazioni')}
-            description={t('Find help and information about the app.', 'Trova aiuto e informazioni sull\'app.')}
+            title={t('settings.support.title')}
+            description={t('settings.support.description')}
         >
             <div className="flex flex-col sm:flex-row gap-4">
-                <a href="#" className="flex-1 text-center bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('Contact Support', 'Contatta il Supporto')}</a>
-                <a href="#" className="flex-1 text-center bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('Terms of Service', 'Termini di Servizio')}</a>
-                <a href="#" className="flex-1 text-center bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('Privacy Policy', 'Informativa Privacy')}</a>
+                <a href="#" className="flex-1 text-center bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('settings.support.contact')}</a>
+                <a href="#" className="flex-1 text-center bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('settings.support.terms')}</a>
+                <a href="#" className="flex-1 text-center bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 p-3 rounded-md">{t('settings.support.privacy')}</a>
             </div>
         </SettingSection>
 
         {/* Data Management */}
          <SettingSection 
-            title={t('Data Management', 'Gestione Dati')}
-            description={t('Manage app data and cache.', 'Gestisci i dati e la cache dell\'app.')}
+            title={t('settings.data.title')}
+            description={t('settings.data.description')}
         >
-            <button onClick={clearCache} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 p-3 rounded-md font-semibold">{t('Clear Cache', 'Svuota Cache')}</button>
+            <button onClick={clearCache} className="bg-red-500/10 text-red-500 hover:bg-red-500/20 p-3 rounded-md font-semibold">{t('settings.data.clearCache')}</button>
         </SettingSection>
 
         <div className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            <p>Apparel Mockup AI - Versione 1.0.0</p>
+            <p>{t('settings.version')}</p>
         </div>
       </div>
     </div>

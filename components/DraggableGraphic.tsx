@@ -1,8 +1,8 @@
 
 
 
+
 import React, { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react';
-// FIX: Import DesignLayer from the new central location in constants.ts
 import type { DesignLayer } from '../constants';
 
 interface DraggableGraphicProps {
