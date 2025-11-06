@@ -22,9 +22,10 @@ const LoadingOverlay: React.FC = () => (
 export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl, selectedGarment }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const animationFrameIdRef = useRef<number>();
 
   useEffect(() => {
-    if (!mountRef.current) return;
+    if (!mountRef.current || !imageUrl) return;
 
     setIsLoading(true);
     const mountNode = mountRef.current;
@@ -57,27 +58,8 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl, select
 
     const modelPath = GARMENT_3D_MODELS[selectedGarment];
 
-    if (!modelPath) {
-        // Fallback to plane if no 3D model is available
-        const textureLoader = new THREE.TextureLoader();
-        textureLoader.load(imageUrl, (texture) => {
-            texture.colorSpace = THREE.SRGBColorSpace;
-            const aspectRatio = texture.image.width / texture.image.height;
-            const geometry = new THREE.PlaneGeometry(aspectRatio, 1, 32, 32);
-            const material = new THREE.MeshStandardMaterial({
-              map: texture,
-              side: THREE.DoubleSide,
-              roughness: 0.7,
-              metalness: 0.1,
-            });
-            const mesh = new THREE.Mesh(geometry, material);
-            scene.add(mesh);
-            setIsLoading(false);
-        }, undefined, (error) => {
-            console.error('An error happened loading the texture for plane fallback.', error);
-            setIsLoading(false);
-        });
-    } else {
+    // More robustly check for a valid path before attempting to load a GLB model.
+    if (modelPath) {
         // Load real 3D model
         const gltfLoader = new GLTFLoader();
         const textureLoader = new THREE.TextureLoader();
@@ -120,29 +102,53 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl, select
             console.error("Failed to load 3D model or texture:", error);
             setIsLoading(false);
         });
+    } else {
+        // Fallback to plane if no 3D model is available
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.load(imageUrl, (texture) => {
+            texture.colorSpace = THREE.SRGBColorSpace;
+            const aspectRatio = texture.image.width / texture.image.height;
+            const geometry = new THREE.PlaneGeometry(aspectRatio, 1, 32, 32);
+            const material = new THREE.MeshStandardMaterial({
+              map: texture,
+              side: THREE.DoubleSide,
+              roughness: 0.7,
+              metalness: 0.1,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+            setIsLoading(false);
+        }, undefined, (error) => {
+            console.error('An error happened loading the texture for plane fallback.', error);
+            setIsLoading(false);
+        });
     }
 
     // Resize handler
     const handleResize = () => {
-      if (!mountRef.current) return;
-      const { clientWidth, clientHeight } = mountRef.current;
-      camera.aspect = clientWidth / clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(clientWidth, clientHeight);
+      // Defer resize logic to the next microtask to avoid ResizeObserver loop errors.
+      queueMicrotask(() => {
+        if (!mountRef.current) return;
+        const { clientWidth, clientHeight } = mountRef.current;
+        camera.aspect = clientWidth / clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(clientWidth, clientHeight);
+      });
     };
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(mountNode);
 
-    let animationFrameId: number;
     const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
+      animationFrameIdRef.current = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
     };
     animate();
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
       resizeObserver.disconnect();
       if (renderer.domElement.parentNode === mountNode) {
           mountNode.removeChild(renderer.domElement);
@@ -152,9 +158,11 @@ export const Mockup3DViewer: React.FC<Mockup3DViewerProps> = ({ imageUrl, select
               if (object.geometry) object.geometry.dispose();
               if (object.material) {
                   if (Array.isArray(object.material)) {
-                      object.material.forEach(mat => mat.dispose());
+                      object.material.forEach(mat => {
+                        if('dispose' in mat) mat.dispose()
+                      });
                   } else {
-                      object.material.dispose();
+                      if('dispose' in (object.material as THREE.Material)) (object.material as THREE.Material).dispose();
                   }
               }
           }

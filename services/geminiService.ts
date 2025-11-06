@@ -26,6 +26,14 @@ export interface GroundingSource {
   title: string;
 }
 
+export interface PrintArea {
+  x: number; // top-left x, normalized (0-1)
+  y: number; // top-left y, normalized (0-1)
+  width: number;
+  height: number;
+}
+
+
 // Helper to handle API errors for image generation
 const handleImageGenerationError = (error: any, context: 'mockup' | 'graphic' | 'view' | 'render' | 'propagate' | 'modify' | 'filter', contextData?: any): GeminiError => {
     if (error instanceof GeminiError) {
@@ -190,7 +198,13 @@ export const generateMockup = async (config: MockupConfig, view: string): Promis
         let finalPromptAdditions = '';
 
         if (config.selectedStyle === STYLE_OPTIONS.TECHNICAL_SKETCH) {
-            finalPromptAdditions = `, technical flat sketch, single garment, clean lines, black and white, vector illustration style, ONLY the ${view} view, on a white background`;
+            finalPromptAdditions = `.
+            **MANDATORY INSTRUCTIONS FOR TECHNICAL SKETCH:**
+            1.  **Output Format:** Generate a technical flat sketch, also known as a flat drawing or fashion flat. This is a black and white vector-style illustration.
+            2.  **Content:** The image MUST contain ONLY the line art for the garment's ${view} view.
+            3.  **Background:** The background must be solid white.
+            4.  **EXCLUSIONS: ABSOLUTELY DO NOT include any of the following:** text, numbers, measurements, annotations, sizing charts, spec sheets, tables, or any written information.
+            5.  **Final Check:** The final image should be clean, professional, and ready for a design specification, containing only the garment drawing.`;
         } else {
             if (config.useAiModelScene) {
                 finalPromptAdditions = `, on a ${config.aiModelPrompt}, ${config.aiScenePrompt}, ${config.selectedStyle}, professional product photography, ONLY the ${view} view`;
@@ -260,7 +274,11 @@ export const generateAdditionalView = async (baseImageUrl: string, config: Mocku
                 prompt += ` Present the garment in a ghost mannequin style, isolated on a neutral gray background, with no model or person visible.`;
             }
         } else {
-             prompt = `Based on the provided technical sketch of a ${getBaseGarmentDescription(config)}, generate a new technical flat sketch of the EXACT same garment, but from the ${view} view ONLY. Maintain the same clean, black and white vector style.`;
+             prompt = `From the provided image of a ${getBaseGarmentDescription(config)}, create a technical flat sketch of the ${view} view.
+            **MANDATORY INSTRUCTIONS:**
+            1.  **Style:** Match the clean, black-and-white, vector line art style of a professional fashion flat.
+            2.  **Content:** The image MUST ONLY contain the line drawing of the garment.
+            3.  **EXCLUSIONS: DO NOT include any text, numbers, measurements, annotations, or callouts.** The final image must be pure line art on a white background.`;
         }
         
         const response = await ai.models.generateContent({
@@ -479,5 +497,52 @@ export const parseEasyPrompt = async (prompt: string): Promise<Partial<MockupCon
     } catch (error) {
         console.error("Error parsing easy prompt:", error);
         throw new GeminiError('parse_prompt_failed', "The AI could not understand the request.");
+    }
+};
+
+export const analyzePrintArea = async (imageUrl: string): Promise<PrintArea> => {
+    const prompt = `Analyze this image of a garment. Identify the primary printable area (e.g., the center chest on a t-shirt, the main front panel of a hoodie). Return ONLY a JSON object with the coordinates of this area. The coordinates must be normalized from 0 to 1. The JSON object should have keys "x", "y", "width", and "height", where (x,y) is the top-left corner of the bounding box.`;
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [
+                { text: prompt },
+                { inlineData: { mimeType: 'image/png', data: dataUrlToBase64(imageUrl) } }
+            ]},
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        x: { type: Type.NUMBER, description: "Normalized top-left x-coordinate (0-1)." },
+                        y: { type: Type.NUMBER, description: "Normalized top-left y-coordinate (0-1)." },
+                        width: { type: Type.NUMBER, description: "Normalized width (0-1)." },
+                        height: { type: Type.NUMBER, description: "Normalized height (0-1)." },
+                    },
+                    required: ["x", "y", "width", "height"],
+                },
+            }
+        });
+
+        const parsed: PrintArea = JSON.parse(response.text);
+        
+        // Basic validation
+        if (
+            typeof parsed.x !== 'number' ||
+            typeof parsed.y !== 'number' ||
+            typeof parsed.width !== 'number' ||
+            typeof parsed.height !== 'number' ||
+            parsed.x < 0 || parsed.y < 0 || parsed.width <= 0 || parsed.height <= 0 ||
+            (parsed.x + parsed.width) > 1.1 || (parsed.y + parsed.height) > 1.1 // Allow slight overage
+        ) {
+            throw new Error("Invalid coordinates received from AI.");
+        }
+        
+        return parsed;
+
+    } catch (error) {
+        console.error("Error analyzing print area:", error);
+        throw new GeminiError('print_area_analysis_failed', "The AI could not analyze the garment's print area.");
     }
 };

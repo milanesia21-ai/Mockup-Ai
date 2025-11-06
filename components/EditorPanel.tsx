@@ -19,6 +19,7 @@ import {
     AlignRight,
 } from './Icons';
 import { useTranslation } from '../hooks/useTranslation';
+import { PrintArea } from '../services/geminiService';
 
 export interface SketchToolsConfig {
     brushType: 'pencil' | 'pen' | 'eraser';
@@ -51,6 +52,7 @@ interface EditorPanelProps {
     canRedo: boolean;
     sketchTools: SketchToolsConfig;
     setSketchTools: React.Dispatch<React.SetStateAction<SketchToolsConfig>>;
+    printArea: PrintArea | null;
 }
 
 type EditorTab = 'layers' | 'add' | 'modify' | 'sketch';
@@ -114,6 +116,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     canRedo,
     sketchTools,
     setSketchTools,
+    printArea
 }) => {
     const [activeTab, setActiveTab] = useState<EditorTab>('layers');
     const [graphicPrompt, setGraphicPrompt] = useState('');
@@ -162,7 +165,12 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         if (e.target.files && e.target.files[0]) {
            try {
                 const imageDataUrl = await fileToDataUrl(e.target.files[0]);
-                onAddLayer({ type: 'image', content: imageDataUrl });
+                 const payload: Partial<DesignLayer> = { type: 'image', content: imageDataUrl };
+                if (printArea) {
+                    payload.position = { x: printArea.x + printArea.width / 2, y: printArea.y + printArea.height / 2 };
+                    payload.size = { width: printArea.width * 0.8, height: printArea.width * 0.8 }; 
+                }
+                onAddLayer(payload);
            } catch (error) {
                 console.error("Errore durante la lettura del file:", error);
                 toast.error(t('toasts.fileReadError'));
@@ -170,6 +178,23 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
         }
         e.target.value = '';
     };
+
+    const handleAddLayerWithPrintArea = (payload: Partial<DesignLayer>) => {
+        if (printArea) {
+            payload.position = { x: printArea.x + printArea.width / 2, y: printArea.y + printArea.height / 2 };
+            if (payload.type === 'text') {
+                 payload.size = { width: printArea.width * 0.6, height: printArea.height * 0.2 };
+            } else if (payload.type === 'shape' && payload.content === 'circle') {
+                const size = Math.min(printArea.width, printArea.height) * 0.6;
+                payload.size = { width: size, height: size };
+            }
+            else {
+                 payload.size = { width: printArea.width * 0.6, height: printArea.height * 0.6 };
+            }
+        }
+        onAddLayer(payload);
+    };
+
 
     const handleInspireMeClick = async () => {
         setIsInspiring(true);
@@ -363,10 +388,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         <div>
                             <h3 className="text-lg font-semibold text-white mb-2">{t('editorPanel.addTab.baseElementsTitle')}</h3>
                             <div className="grid grid-cols-2 gap-2">
-                                <button onClick={() => onAddLayer({ type: 'text', content: 'Hello World', fontFamily: 'Arial', color: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addText')}</button>
-                                <button onClick={() => onAddLayer({ type: 'drawing', content: '' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addSketchLayer')}</button>
-                                <button onClick={() => onAddLayer({ type: 'shape', content: 'rectangle', fill: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addRectangle')}</button>
-                                <button onClick={() => onAddLayer({ type: 'shape', content: 'circle', fill: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addCircle')}</button>
+                                <button onClick={() => handleAddLayerWithPrintArea({ type: 'text', content: 'Hello World', fontFamily: 'Arial', color: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addText')}</button>
+                                <button onClick={() => handleAddLayerWithPrintArea({ type: 'drawing', content: '' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addSketchLayer')}</button>
+                                <button onClick={() => handleAddLayerWithPrintArea({ type: 'shape', content: 'rectangle', fill: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addRectangle')}</button>
+                                <button onClick={() => handleAddLayerWithPrintArea({ type: 'shape', content: 'circle', fill: '#FFFFFF' })} className="text-center bg-gray-700 hover:bg-gray-600 py-2 rounded-md">{t('editorPanel.addTab.addCircle')}</button>
                             </div>
                         </div>
 

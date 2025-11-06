@@ -1,5 +1,6 @@
 
 
+
 import React from 'react';
 
 export const Undo: React.FC<{ className?: string }> = ({ className = "h-5 w-5" }) => (
@@ -95,5 +96,11 @@ export const AlignCenter: React.FC<{ className?: string }> = ({ className = "h-5
 export const AlignRight: React.FC<{ className?: string }> = ({ className = "h-5 w-5" }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24">
         <path fill="currentColor" d="M3 21v-2h18v2H3Zm6-4v-2h12v2H9Zm-6-4v-2h18v2H3Zm6-4V7h12v2H9ZM3 5V3h18v2H3Z"/>
+    </svg>
+);
+
+export const ExportFile: React.FC<{ className?: string }> = ({ className = "h-5 w-5" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24">
+        <path fill="currentColor" d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6zm10-4l-4 4l-4-4h3V9h2v7h3z"/>
     </svg>
 );

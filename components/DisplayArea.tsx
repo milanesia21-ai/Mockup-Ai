@@ -1,11 +1,13 @@
 
 
+
 import React, { useRef, useLayoutEffect, useEffect, useState, useCallback } from 'react';
+import { toast } from 'sonner';
 import { DraggableGraphic } from './DraggableGraphic';
 import { SketchToolsConfig } from './EditorPanel';
 import type { GeneratedImage, DesignLayer } from '../constants';
-import { GroundingSource } from '../services/geminiService';
-import { View3D, View2D } from './Icons';
+import { GroundingSource, PrintArea } from '../services/geminiService';
+import { View3D, View2D, ExportFile } from './Icons';
 import { Mockup3DViewer } from './Mockup3DViewer';
 import { useTranslation } from '../hooks/useTranslation';
 
@@ -21,6 +23,8 @@ interface DisplayAreaProps {
   sketchTools: SketchToolsConfig;
   isLoading: boolean;
   selectedGarment: string;
+  printArea: PrintArea | null;
+  cleanBaseImages: GeneratedImage[];
 }
 
 const Placeholder: React.FC = () => {
@@ -67,7 +71,9 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
     groundingSources,
     sketchTools,
     isLoading,
-    selectedGarment
+    selectedGarment,
+    printArea,
+    cleanBaseImages
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const drawingCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -222,6 +228,93 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
       });
     }
   };
+
+  const handleExportSVG = () => {
+    if (!cleanBaseImages.length || !printArea) {
+        toast.error("Cannot export without a base image and analyzed print area.");
+        return;
+    }
+
+    const viewBoxWidth = 1000;
+    const viewBoxHeight = 1000;
+
+    const layerElements = layers
+        .filter(l => l.visible)
+        .map(layer => {
+            const w = layer.size.width * viewBoxWidth;
+            const h = layer.size.height * viewBoxHeight;
+            const x = layer.position.x * viewBoxWidth;
+            const y = layer.position.y * viewBoxHeight;
+            
+            const transform = `translate(${x}, ${y}) rotate(${layer.rotation}) translate(${-w / 2}, ${-h / 2})`;
+
+            if (layer.type === 'image' || layer.type === 'drawing') {
+                return `<image transform="${transform}" x="0" y="0" width="${w}" height="${h}" xlink:href="${layer.content}" style="mix-blend-mode: ${layer.blendMode}; opacity: ${layer.opacity};" />`;
+            }
+            if (layer.type === 'text') {
+                // A simple approximation for font size. A more robust solution might be needed.
+                const fontSize = Math.min(h * 0.8, w / (layer.content.length * 0.6 || 1));
+                return `<text transform="${transform}" x="${w/2}" y="${h/2}" font-family="${layer.fontFamily}" font-weight="${layer.fontWeight}" fill="${layer.color}" font-size="${fontSize}" text-anchor="middle" dominant-baseline="central" style="mix-blend-mode: ${layer.blendMode}; opacity: ${layer.opacity};">${layer.content}</text>`;
+            }
+             if (layer.type === 'shape') {
+                if (layer.content === 'rectangle') {
+                    return `<rect transform="${transform}" x="0" y="0" width="${w}" height="${h}" fill="${layer.fill}" style="mix-blend-mode: ${layer.blendMode}; opacity: ${layer.opacity};" />`;
+                }
+                if (layer.content === 'circle') {
+                    return `<ellipse transform="${transform}" cx="${w/2}" cy="${h/2}" rx="${w/2}" ry="${h/2}" fill="${layer.fill}" style="mix-blend-mode: ${layer.blendMode}; opacity: ${layer.opacity};" />`;
+                }
+            }
+            return '';
+        }).join('\n');
+
+    const svgContent = `
+<svg width="${viewBoxWidth}" height="${viewBoxHeight}" viewBox="0 0 ${viewBoxWidth} ${viewBoxHeight}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <clipPath id="print-clip">
+      <rect x="${printArea.x * viewBoxWidth}" y="${printArea.y * viewBoxHeight}" width="${printArea.width * viewBoxWidth}" height="${printArea.height * viewBoxHeight}" />
+    </clipPath>
+  </defs>
+
+  <metadata>
+    <print-specifications>
+      <area-id>center-chest</area-id>
+      <dimensions-normalized>
+        <x>${printArea.x}</x>
+        <y>${printArea.y}</y>
+        <width>${printArea.width}</width>
+        <height>${printArea.height}</height>
+      </dimensions-normalized>
+      <printing-method>DTG_SUGGESTED</printing-method>
+      <color-mode>RGB_SOURCE</color-mode>
+      <source-mockup-app>Apparel Mockup AI</source-mockup-app>
+    </print-specifications>
+  </metadata>
+
+  <g id="reference-mockup">
+    <image x="0" y="0" width="${viewBoxWidth}" height="${viewBoxHeight}" xlink:href="${cleanBaseImages[0].url}" opacity="0.4" />
+    <rect x="${printArea.x * viewBoxWidth}" y="${printArea.y * viewBoxHeight}" width="${printArea.width * viewBoxWidth}" height="${printArea.height * viewBoxHeight}" fill="none" stroke="#FF4500" stroke-width="2" stroke-dasharray="10,5" />
+  </g>
+
+  <g id="user-graphic-layer-clipped" clip-path="url(#print-clip)">
+    ${layerElements}
+  </g>
+
+  <g id="user-graphic-layer-unclipped" style="display: none;">
+     <!-- Same layers without clipping for reference -->
+     ${layerElements}
+  </g>
+</svg>
+    `;
+
+    const blob = new Blob([svgContent.trim()], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'print-file.svg';
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("File di stampa SVG esportato!");
+};
   
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
       const target = e.target as HTMLElement;
@@ -275,6 +368,30 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
                             onError={() => setImageError(true)}
                             data-is-base-image="true"
                         />
+                         {printArea && viewMode === '2d' && !isGalleryView && containerRef.current && (
+                            <div
+                                className="absolute"
+                                style={{
+                                    left: `0px`,
+                                    top: `0px`,
+                                    width: `100%`,
+                                    height: `100%`,
+                                    pointerEvents: 'none',
+                                }}
+                                >
+                                <div
+                                    className="absolute border-2 border-dashed border-orange-500 pointer-events-none"
+                                    style={{
+                                        left: `${printArea.x * 100}%`,
+                                        top: `${printArea.y * 100}%`,
+                                        width: `${printArea.width * 100}%`,
+                                        height: `${printArea.height * 100}%`,
+                                        boxSizing: 'border-box',
+                                        zIndex: 99
+                                    }}
+                                />
+                            </div>
+                        )}
                          <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
                             {layers.map((layer, index) => (
                                 layer.type !== 'drawing' && (
@@ -328,6 +445,14 @@ export const DisplayArea: React.FC<DisplayAreaProps> = ({
       </div>
        {primaryImage && !imageError && (
         <div className="flex-shrink-0 flex justify-end items-center gap-2 pt-4">
+           <button
+              onClick={handleExportSVG}
+              className="bg-gray-800 text-white font-bold py-3 px-5 rounded-full shadow-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-orange-500 transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"
+              aria-label={t('displayArea.exportButton')}
+          >
+              <ExportFile className="h-5 w-5" />
+              <span>{t('displayArea.exportButton')}</span>
+          </button>
           <button
               onClick={() => setViewMode(v => v === '2d' ? '3d' : '2d')}
               className="bg-gray-800 text-white font-bold py-3 px-5 rounded-full shadow-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-orange-500 transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center gap-2"

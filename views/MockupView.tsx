@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { toast } from 'sonner';
 
@@ -14,7 +15,7 @@ import {
 } from '../constants';
 import * as gemini from '../services/geminiService';
 import { GeminiError } from '../services/errors';
-import type { GroundingSource } from '../services/geminiService';
+import type { GroundingSource, PrintArea } from '../services/geminiService';
 import { useTranslation } from '../hooks/useTranslation';
 
 const uuidv4 = () => crypto.randomUUID();
@@ -203,6 +204,7 @@ export const MockupView: React.FC = () => {
     const [cleanBaseImages, setCleanBaseImages] = useState<GeneratedImage[]>([]);
     const [finalImage, setFinalImage] = useState<string | null>(null);
     const [groundingSources, setGroundingSources] = useState<GroundingSource[]>([]);
+    const [printArea, setPrintArea] = useState<PrintArea | null>(null);
     const [step, setStep] = useState<AppStep>('generate');
     
     
@@ -290,6 +292,7 @@ export const MockupView: React.FC = () => {
         setFinalImage(null);
         dispatch({ type: 'RESET_STATE' });
         setGroundingSources([]);
+        setPrintArea(null);
 
         const generationTask = async () => {
             if (config.selectedViews.length === 0) throw new GeminiError('select_view', 'Please select at least one view.');
@@ -317,6 +320,16 @@ export const MockupView: React.FC = () => {
             setBaseImages(newImages);
             setCleanBaseImages(newImages);
             setGroundingSources(uniqueSources);
+
+             try {
+                const area = await gemini.analyzePrintArea(newImages[0].url);
+                setPrintArea(area);
+                toast.success(t('toasts.printAreaAnalyzed'));
+            } catch(e) {
+                toast.error(t('errors.print_area_analysis_failed'));
+                console.error(e);
+            }
+            
             setStep('design');
             return t('toasts.generatingViews.success').replace('{count}', newImages.length.toString());
         };
@@ -601,6 +614,7 @@ export const MockupView: React.FC = () => {
                     designStyle={config.selectedDesignStyle}
                     selectedStyle={config.selectedStyle}
                     sketchTools={sketchTools} setSketchTools={setSketchTools}
+                    printArea={printArea}
                 />;
             default:
                 return null;
@@ -620,11 +634,18 @@ export const MockupView: React.FC = () => {
                 </aside>
                 <section className="flex flex-col bg-gray-900 p-4 min-h-0">
                      <DisplayArea
-                        baseImages={baseImages} finalImage={finalImage} layers={layers} activeLayerId={activeLayerId}
+                        baseImages={baseImages}
+                        finalImage={finalImage}
+                        layers={layers}
+                        activeLayerId={activeLayerId}
                         onSetActiveLayer={(id) => dispatch({ type: 'SET_ACTIVE_LAYER', payload: { id }})}
                         onUpdateLayer={handleUpdateLayer}
-                        groundingSources={groundingSources} sketchTools={sketchTools} isLoading={isLoading}
+                        groundingSources={groundingSources}
+                        sketchTools={sketchTools}
+                        isLoading={isLoading}
                         selectedGarment={config.selectedGarment}
+                        printArea={printArea}
+                        cleanBaseImages={cleanBaseImages}
                     />
                 </section>
             </div>

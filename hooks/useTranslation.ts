@@ -28,6 +28,7 @@ const translations = {
       },
       "groundingTitle": "Enhanced with Google Search",
       "downloadButton": "Download",
+      "exportButton": "Export for Print (SVG)",
       "switchTo3D": "Switch to 3D View",
       "switchTo2D": "Switch to 2D View",
       "generatedMockupAlt": "Generated apparel mockup",
@@ -239,6 +240,7 @@ const translations = {
       "defaultUserName": "User"
     },
     "toasts": {
+      "printAreaAnalyzed": "Print area analyzed successfully!",
       "generatingViews": {
         "loading": "Generating mockup views...",
         "success": "{count} mockup view(s) generated!",
@@ -302,6 +304,7 @@ const translations = {
       "enterPromptToAnalyze": "Please enter a description to analyze."
     },
     "errors": {
+      "print_area_analysis_failed": "The AI could not analyze the garment's print area.",
       "select_view": "Please select at least one view.",
       "invalid_data_format": "The AI returned an invalid data format. Please try again.",
       "parse_prompt_failed": "The AI could not understand the request. Try rephrasing.",
@@ -656,6 +659,7 @@ const translations = {
       },
       "groundingTitle": "Migliorato con Ricerca Google",
       "downloadButton": "Scarica",
+      "exportButton": "Esporta per Stampa (SVG)",
       "switchTo3D": "Passa a Vista 3D",
       "switchTo2D": "Passa a Vista 2D",
       "generatedMockupAlt": "Mockup di abbigliamento generato",
@@ -867,6 +871,7 @@ const translations = {
       "defaultUserName": "Utente"
     },
     "toasts": {
+      "printAreaAnalyzed": "Area di stampa analizzata con successo!",
       "generatingViews": {
         "loading": "Generazione delle viste del mockup in corso...",
         "success": "{count} vista/e del mockup generate!",
@@ -930,6 +935,7 @@ const translations = {
       "enterPromptToAnalyze": "Inserisci una descrizione da analizzare."
     },
     "errors": {
+      "print_area_analysis_failed": "L'IA non è riuscita ad analizzare l'area di stampa dell'indumento.",
       "select_view": "Seleziona almeno una vista.",
       "invalid_data_format": "L'IA ha restituito un formato di dati non valido. Si prega di riprovare.",
       "parse_prompt_failed": "L'IA non è riuscita a capire la richiesta. Prova a riformularla.",
